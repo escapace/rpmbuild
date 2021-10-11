@@ -58,8 +58,9 @@ jobs:
       matrix:
         spec:
         - ferm
-        - zsh
+        - lua-filesystem
         - tmux
+        - zsh
     steps:
       - name: checkout
         uses: actions/checkout@v2
