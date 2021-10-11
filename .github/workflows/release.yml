@@ -134,13 +134,8 @@ jobs:
         uses: actions/download-artifact@v2
         with:
           name: assets
-      - name: list assets
-        run: |
-          ls -al
-          ls -al assets
-          tree assets
-      # - name: release
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #     RELEASE_CONTAINER: "true"
-      #   run: pnpm exec semantic-release
+      - name: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ASSETS: "true"
+        run: pnpm exec semantic-release
