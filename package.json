@@ -22,7 +22,7 @@
   "private": true,
   "repository": "https://github.com/escapace/rpmbuild.git",
   "scripts": {
-    "preinstall": "npx only-allow pnpm",
+    "preinstall": "npx -y only-allow pnpm",
     "prepare": "is-ci || husky install"
   },
   "sideEffects": false,
