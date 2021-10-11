@@ -1,6 +1,6 @@
 # Environment variables
 env:
-  DOCKER_SCOPE: "escapace"
+  DOCKER_SCOPE: "ghcr.io/escapace"
 
 # Enable manage repository scripts
 enable:

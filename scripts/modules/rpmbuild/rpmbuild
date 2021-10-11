@@ -3,14 +3,13 @@
 # @import console/info
 # @import console/error
 # @import lang/truth
-# @import github.com/escapace/stack-tools docker/dockerBuild
 
 rpmbuild () {
     local name="$1"
     local configuration="${2:-epel-8-x86_64}"
     local scope="${DOCKER_SCOPE:-internal}"
     local main="${scope}/rpmbuild"
-    local data="${scope}-rpmbuild-cache"
+    local data="rpmbuild-cache"
 
     if required "${RPMBUILD_PACKAGE}"
     then
@@ -49,7 +48,7 @@ rpmbuild () {
 
         _ info "MOCK init"
         mock -r "${configuration}" --dnf --init
-        
+
         _ info "MOCK dependencies"
 
         if [[ "${name}" == "knot-resolver" ]]
@@ -73,7 +72,7 @@ rpmbuild () {
             --sources="${SOURCES}" \
             --resultdir="${SRPMS}" \
             --no-cleanup-after
-            
+
         _ info "MOCK RPM"
 
         mock -r "${configuration}" \
@@ -94,8 +93,6 @@ rpmbuild () {
             return 1
         }
 
-        DOCKER_BUILD_OPTIONS="--rm" dockerBuild rpmbuild
-
         info "Processing \"${name}\" ..."
 
         if ! docker inspect "${data}" > /dev/null 2>&1; then
@@ -105,7 +102,7 @@ rpmbuild () {
                 "${main}"
         fi
 
-        docker run -it --privileged \
+        docker run --rm -it --privileged \
             --volumes-from "${data}" \
             -v "${MANAGE_REPOSITORY}":/tmp/repository \
             -e HOST_UID="$(id -u)" \

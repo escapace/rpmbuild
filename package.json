@@ -1,0 +1,30 @@
+{
+  "name": "rpmbuild",
+  "description": "",
+  "version": "0.0.0",
+  "author": "escapace <opensource@escapace.com>",
+  "bugs": "https://github.com/escapace/rpmbuild/issues",
+  "devDependencies": {
+    "@commitlint/cli": "13.2.1",
+    "@commitlint/config-conventional": "13.2.0",
+    "@ls-lint/ls-lint": "1.10.0",
+    "@semantic-release/exec": "6.0.1",
+    "husky": "7.0.2",
+    "is-ci": "3.0.0",
+    "lint-staged": "11.2.3",
+    "prettier": "2.4.1",
+    "prettier-config-escapace": "1.0.0",
+    "semantic-release": "18.0.0",
+    "syncpack": "5.8.15"
+  },
+  "homepage": "https://github.com/escapace/rpmbuild",
+  "license": "MPL-2.0",
+  "private": true,
+  "repository": "https://github.com/escapace/rpmbuild.git",
+  "scripts": {
+    "preinstall": "npx only-allow pnpm",
+    "prepare": "is-ci || husky install"
+  },
+  "sideEffects": false,
+  "type": "commonjs"
+}

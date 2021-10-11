@@ -1,0 +1,10 @@
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+set -euo pipefail
+
+# pnpm exec  syncpack fix-mismatches --source 'package.json' --source 'example/package.json' || exit 1
+pnpm exec syncpack set-semver-ranges --dev --source 'package.json' || exit 1
+pnpm exec syncpack format --source 'package.json' || exit 1
+git add package.json
+pnpm exec ls-lint || exit 1
+pnpm exec lint-staged || exit 1
