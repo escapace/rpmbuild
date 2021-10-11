@@ -31,4 +31,4 @@ jobs:
           docker build -t ghcr.io/${{ github.repository }}:latest .
       - name: build
         run: |
-          ./manage build ferm zsh
+          ./manage build ferm zsh tmux

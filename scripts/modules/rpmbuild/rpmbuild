@@ -49,20 +49,6 @@ rpmbuild () {
         _ info "MOCK init"
         mock -r "${configuration}" --dnf --init
 
-        _ info "MOCK dependencies"
-
-        if [[ "${name}" == "knot-resolver" ]]
-        then
-            mock -r "${configuration}" --install "/tmp/repository/RPMS/libuv-1.34.1-1.el8.x86_64.rpm"
-            mock -r "${configuration}" --install "/tmp/repository/RPMS/libuv-devel-1.34.1-1.el8.x86_64.rpm"
-        fi
-
-        if [[ "${name}" == "lua-psl" ]]
-        then
-            mock -r "${configuration}" --install "/tmp/repository/RPMS/libpsl-0.21.0-2.el8.x86_64.rpm"
-            mock -r "${configuration}" --install "/tmp/repository/RPMS/libpsl-devel-0.21.0-2.el8.x86_64.rpm"
-        fi
-
         _ info "MOCK SRPM"
 
         mock -r "${configuration}" \
