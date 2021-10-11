@@ -29,6 +29,8 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: set up qemu
+        uses: docker/setup-qemu-action@v1
       - name: docker buildx
         id: buildx
         uses: docker/setup-buildx-action@v1
@@ -37,7 +39,7 @@ jobs:
       - name: container
         run: |
           # docker pull ghcr.io/${{ github.repository }}:latest || true
-          docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/${{ github.repository }}:latest .
+          docker buildx build --platform linux/amd64,linux/arm64/v8 -t ghcr.io/${{ github.repository }}:latest .
       # - name: build
       #   run: |
       #     ./manage build ferm zsh tmux
