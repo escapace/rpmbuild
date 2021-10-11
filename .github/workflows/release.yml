@@ -17,8 +17,7 @@ on:
   repository_dispatch:
     types: [release]
 jobs:
-  release:
-    name: release
+  container:
     runs-on: ubuntu-latest
     steps:
       - name: checkout
@@ -36,29 +35,119 @@ jobs:
         uses: docker/setup-buildx-action@v1
       - name: available platforms
         run: echo ${{ steps.buildx.outputs.platforms }}
+      - name: cache buildx
+        uses: actions/cache@v2.1.6
+        with:
+          path: ~/.buildx
+          key: ${{ runner.os }}-node-${{ hashFiles('**/Dockerfile') }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
       - name: container
         run: |
-          # docker pull ghcr.io/${{ github.repository }}:latest || true
-          docker buildx build --platform linux/amd64,linux/arm64/v8 -t ghcr.io/${{ github.repository }}:latest .
-      # - name: build
-      #   run: |
-      #     ./manage build ferm zsh tmux
-      # - name: setup node
-      #   uses: actions/setup-node@v2.4.1
-      #   with:
-      #     node-version: 16
-      # - name: cache
-      #   uses: actions/cache@v2.1.6
-      #   with:
-      #     path: ~/.pnpm-store
-      #     key: ${{ runner.os }}-node-${{ hashFiles('**/pnpm-lock.yaml') }}
-      #     restore-keys: |
-      #       ${{ runner.os }}-node-
-      # - name: install dependencies
-      #   run: |
-      #     npm install -g pnpm
-      #     pnpm install
+          docker buildx build \
+            --cache-to   type=local,dest=$HOME/.buildx,mode=max \
+            --cache-from type=local,dest=$HOME/.buildx \
+            --platform linux/amd64,linux/arm64/v8 \
+            -t ghcr.io/${{ github.repository }}:latest .
+      - name: setup node
+        uses: actions/setup-node@v2.4.1
+        with:
+          node-version: 16
+      - name: cache node
+        uses: actions/cache@v2.1.6
+        with:
+          path: ~/.pnpm-store
+          key: ${{ runner.os }}-node-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+      - name: install dependencies
+        run: |
+          npm install -g pnpm
+          pnpm install
+      - name: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_CONTAINER: "true"
+        run: pnpm exec semantic-release
+  rpmbuild:
+    needs: [container]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        spec:
+        - ferm
+        - zsh
+        - tmux
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: docker login
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: container
+        run: docker pull ghcr.io/${{ github.repository }}:latest
+      - name: setup node
+        uses: actions/setup-node@v2.4.1
+        with:
+          node-version: 16
+      - name: cache node
+        uses: actions/cache@v2.1.6
+        with:
+          path: ~/.pnpm-store
+          key: ${{ runner.os }}-node-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+      - name: install dependencies
+        run: |
+          npm install -g pnpm
+          pnpm install
+      - name: build
+        run: |
+          ./manage build ${{ matrix.spec }}
+      - name: upload rpms
+        uses: actions/upload-artifact@v2
+        with:
+            retention-days: 5
+            name: assets
+            path: |
+              RPMS/*.rpm
+              SRPMS/*.rpm
+  release:
+    needs: [rpmbuild]
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: setup node
+        uses: actions/setup-node@v2.4.1
+        with:
+          node-version: 16
+      - name: cache node
+        uses: actions/cache@v2.1.6
+        with:
+          path: ~/.pnpm-store
+          key: ${{ runner.os }}-node-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+      - name: install dependencies
+        run: |
+          npm install -g pnpm
+          pnpm install
+      - name: download rpms
+        uses: actions/download-artifact@v2
+        with:
+          name: assets
+      - name: list assets
+        run: |
+          ls -al
+          ls -al assets
+          tree assets
       # - name: release
       #   env:
       #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #     RELEASE_CONTAINER: "true"
       #   run: pnpm exec semantic-release
