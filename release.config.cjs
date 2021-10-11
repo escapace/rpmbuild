@@ -19,9 +19,15 @@ module.exports = {
       {
         shell: true,
         publishCmd: [
-          'docker tag ghcr.io/GITHUB_REPOSITORY:latest ghcr.io/GITHUB_REPOSITORY:${nextRelease.version}',
-          'docker push ghcr.io/GITHUB_REPOSITORY:latest',
-          'docker push ghcr.io/GITHUB_REPOSITORY:${nextRelease.version}'
+          [
+            'docker buildx build',
+            '--cache-from type=local,src=$HOME/.buildx',
+            '--cache-to   type=local,dest=$HOME/.buildx,mode=max',
+            '--platform linux/amd64,linux/arm64/v8',
+            '--tag ghcr.io/GITHUB_REPOSITORY:latest',
+            '--tag ghcr.io/GITHUB_REPOSITORY:${nextRelease.version}',
+            '--push .'
+          ].join(' ')
         ]
           .map((string) =>
             string.replace(/GITHUB_REPOSITORY/g, GITHUB_REPOSITORY)
