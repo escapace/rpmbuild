@@ -43,11 +43,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-buildx-
       - name: container
-        run: |
-          docker buildx build \
-            --cache-to   type=local,dest=$HOME/.buildx,mode=max \
-            --cache-from type=local,dest=$HOME/.buildx \
-            --platform linux/amd64,linux/arm64/v8 \
+        run: >
+          docker buildx build
+            --cache-to   type=local,dest=$HOME/.buildx,mode=max
+            --cache-from type=local,dest=$HOME/.buildx
+            --platform linux/amd64,linux/arm64/v8
             -t ghcr.io/${{ github.repository }}:latest .
       - name: setup node
         uses: actions/setup-node@v2.4.1
