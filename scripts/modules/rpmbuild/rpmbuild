@@ -102,7 +102,7 @@ rpmbuild () {
                 "${main}"
         fi
 
-        docker run --rm -it --privileged \
+        docker run --rm -t --privileged \
             --volumes-from "${data}" \
             -v "${MANAGE_REPOSITORY}":/tmp/repository \
             -e HOST_UID="$(id -u)" \
