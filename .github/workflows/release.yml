@@ -28,7 +28,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: set up qemu
+      - name: setup qemu
         uses: docker/setup-qemu-action@v1
       - name: docker buildx
         id: buildx
@@ -42,26 +42,14 @@ jobs:
           key: ${{ runner.os }}-node-${{ hashFiles('**/Dockerfile') }}
           restore-keys: |
             ${{ runner.os }}-buildx-
-      - name: setup node
-        uses: actions/setup-node@v2.4.1
-        with:
-          node-version: 16
-      - name: cache node
-        uses: actions/cache@v2.1.6
-        with:
-          path: ~/.pnpm-store
-          key: ${{ runner.os }}-node-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-      - name: install dependencies
-        run: |
-          npm install -g pnpm
-          pnpm install
-      - name: release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_CONTAINER: "true"
-        run: pnpm exec semantic-release
+      - name: build
+        run: >-
+          docker buildx build
+          --cache-from type=local,src=$HOME/.buildx
+          --cache-to   type=local,dest=$HOME/.buildx,mode=max
+          --platform linux/amd64,linux/arm64/v8
+          --tag ghcr.io/${{ github.repository }}:${{ github.sha }}
+          --push .
   rpmbuild:
     needs: [container]
     runs-on: ubuntu-latest
@@ -82,22 +70,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: container
-        run: docker pull ghcr.io/${{ github.repository }}:latest
-      - name: setup node
-        uses: actions/setup-node@v2.4.1
-        with:
-          node-version: 16
-      - name: cache node
-        uses: actions/cache@v2.1.6
-        with:
-          path: ~/.pnpm-store
-          key: ${{ runner.os }}-node-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-      - name: install dependencies
         run: |
-          npm install -g pnpm
-          pnpm install
+          docker pull ghcr.io/${{ github.repository }}:${{ github.sha }}
+          docker tag ghcr.io/${{ github.repository }}:${{ github.sha }} ghcr.io/${{ github.repository }}:latest
       - name: build
         run: |
           ./manage build ${{ matrix.spec }}
@@ -137,5 +112,4 @@ jobs:
       - name: release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_ASSETS: "true"
         run: pnpm exec semantic-release
