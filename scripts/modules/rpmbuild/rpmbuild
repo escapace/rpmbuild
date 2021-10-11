@@ -5,8 +5,22 @@
 # @import lang/truth
 
 rpmbuild () {
+    local defaultConfiguration
+
+    case "$(uname -m)" in
+        x86_64|amd64)
+            defaultConfiguration="epel-8-x86_64"
+            ;;
+        aarch64)
+            defaultConfiguration="epel-8-aarch64"
+            ;;
+        *)
+            error "Unsupported architecture: $(uname -m)"
+            return 1
+    esac
+
     local name="$1"
-    local configuration="${2:-epel-8-x86_64}"
+    local configuration="${2:-${defaultConfiguration}}"
     local scope="${DOCKER_SCOPE:-internal}"
     local main="${scope}/rpmbuild"
     local data="rpmbuild-cache"

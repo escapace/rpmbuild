@@ -1,5 +1,18 @@
 name: release
 on:
+  push:
+    branches:
+      - trunk
+    paths-ignore:
+      - README.md
+      - LICENSE
+  pull_request:
+    branches:
+      - trunk
+    paths-ignore:
+      - README.md
+      - LICENSE
+on:
   schedule:
     - cron: '10 16 * * 2'
   repository_dispatch:
@@ -17,29 +30,34 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: docker buildx
+        id: buildx
+        uses: docker/setup-buildx-action@v1
+      - name: available platforms
+        run: echo ${{ steps.buildx.outputs.platforms }}
       - name: container
         run: |
-          docker pull ghcr.io/${{ github.repository }}:latest || true
-          docker build -t ghcr.io/${{ github.repository }}:latest .
-      - name: build
-        run: |
-          ./manage build ferm zsh tmux
-      - name: setup node
-        uses: actions/setup-node@v2.4.1
-        with:
-          node-version: 16
-      - name: cache
-        uses: actions/cache@v2.1.6
-        with:
-          path: ~/.pnpm-store
-          key: ${{ runner.os }}-node-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-      - name: install dependencies
-        run: |
-          npm install -g pnpm
-          pnpm install
-      - name: release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pnpm exec semantic-release
+          # docker pull ghcr.io/${{ github.repository }}:latest || true
+          docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/${{ github.repository }}:latest .
+      # - name: build
+      #   run: |
+      #     ./manage build ferm zsh tmux
+      # - name: setup node
+      #   uses: actions/setup-node@v2.4.1
+      #   with:
+      #     node-version: 16
+      # - name: cache
+      #   uses: actions/cache@v2.1.6
+      #   with:
+      #     path: ~/.pnpm-store
+      #     key: ${{ runner.os }}-node-${{ hashFiles('**/pnpm-lock.yaml') }}
+      #     restore-keys: |
+      #       ${{ runner.os }}-node-
+      # - name: install dependencies
+      #   run: |
+      #     npm install -g pnpm
+      #     pnpm install
+      # - name: release
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   run: pnpm exec semantic-release

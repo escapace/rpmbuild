@@ -14,7 +14,7 @@ module.exports = {
   plugins: [
     '@semantic-release/commit-analyzer',
     '@semantic-release/release-notes-generator',
-    [
+    process.env['RELEASE_CONTAINER'] === 'true' ? [
       '@semantic-release/exec',
       {
         shell: true,
@@ -28,12 +28,12 @@ module.exports = {
           )
           .join(' && \\\n')
       }
-    ],
-    [
+    ] : undefined,
+    process.env['RELEASE_ASSETS'] === 'true' ? [
       '@semantic-release/github',
       {
         assets
       }
-    ]
-  ]
+    ] : undefined,
+  ].filter((value) => value !== undefined)
 }
