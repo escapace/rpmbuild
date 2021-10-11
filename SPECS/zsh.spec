@@ -1,7 +1,7 @@
 Summary: Powerful interactive shell
 Name: zsh
-Version: 5.7.1
-Release: 1%{?dist}
+Version: 5.8
+Release: 6%{?dist}
 License: MIT
 URL: http://zsh.sourceforge.net/
 Source0: https://downloads.sourceforge.net/%{name}/%{name}-%{version}.tar.xz
@@ -12,20 +12,23 @@ Source4: zshrc.rhs
 Source5: zshenv.rhs
 Source6: dotzshrc
 
+# complete file arguments after rpmbuild -r/-b/-t
+Patch1:  0001-zsh-5.8-comp-rpm.patch
+
 BuildRequires: autoconf
 BuildRequires: coreutils
 BuildRequires: gawk
 BuildRequires: gcc
 BuildRequires: gdbm-devel
-# BuildRequires: glibc-langpack-ja
+BuildRequires: glibc-langpack-ja
 BuildRequires: libcap-devel
+BuildRequires: make
 BuildRequires: ncurses-devel
 BuildRequires: pcre-devel
 BuildRequires: sed
 BuildRequires: texi2html
 BuildRequires: texinfo
-Requires(post): info grep
-Requires(preun): info
+Requires(post): grep
 Requires(postun): coreutils grep
 
 # the hostname package is not available on RHEL-6
@@ -74,6 +77,9 @@ sed -e 's|^\.NOTPARALLEL|#.NOTPARALLEL|' -i 'Config/defs.mk.in'
 # make loading of module's dependencies work again (#1277996)
 export LIBLDFLAGS='-z lazy'
 
+# avoid build failure in case we have working ypcat (#1687574)
+export zsh_cv_sys_nis='no'
+
 %configure \
     --enable-etcdir=%{_sysconfdir} \
     --with-tcsetpgrp \
@@ -84,7 +90,7 @@ export LIBLDFLAGS='-z lazy'
 make -C Src headers
 make -C Src -f Makemod zsh{path,xmod}s.h version.h
 
-make %{?_smp_mflags} all html
+%make_build all html
 
 %check
 # Run the testsuite
@@ -152,6 +158,37 @@ fi
 %doc Doc/*.html
 
 %changelog
+* Fri Jul 23 2021 Fedora Release Engineering <releng@fedoraproject.org> - 5.8-6
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_35_Mass_Rebuild
+
+* Thu Mar 25 2021 Kamil Dudka <kdudka@redhat.com> - 5.8-5
+- complete file arguments after rpmbuild -r/-b/-t
+
+* Thu Jan 28 2021 Fedora Release Engineering <releng@fedoraproject.org> - 5.8-4
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_34_Mass_Rebuild
+
+* Wed Jul 29 2020 Fedora Release Engineering <releng@fedoraproject.org> - 5.8-3
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_33_Mass_Rebuild
+
+* Tue Jul 14 2020 Tom Stellard <tstellar@redhat.com> - 5.8-2
+- Use make macros
+- https://fedoraproject.org/wiki/Changes/UseMakeBuildInstallMacro
+
+* Mon Feb 24 2020 Kamil Dudka <kdudka@redhat.com> - 5.8-1
+- update to latest upstream release
+
+* Fri Jan 31 2020 Fedora Release Engineering <releng@fedoraproject.org> - 5.7.1-5
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_32_Mass_Rebuild
+
+* Fri Jul 26 2019 Kamil Dudka <kdudka@redhat.com> - 5.7.1-4
+- make failed searches of history in Zle robust (#1722703)
+
+* Tue Mar 12 2019 Kamil Dudka <kdudka@redhat.com> - 5.7.1-3
+- avoid build failure in case we have working ypcat (#1687574)
+
+* Fri Mar  8 2019 Tim Landscheidt <tim@tim-landscheidt.de> - 5.7.1-2
+- Remove obsolete requirements for %%post/%%preun scriptlets
+
 * Mon Feb 04 2019 Kamil Dudka <kdudka@redhat.com> - 5.7.1-1
 - update to latest upstream release
 

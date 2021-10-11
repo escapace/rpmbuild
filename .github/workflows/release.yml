@@ -23,7 +23,7 @@ jobs:
           docker build -t ghcr.io/${{ github.repository }}:latest .
       - name: build
         run: |
-          ./manage build ferm
+          ./manage build ferm zsh
       - name: setup node
         uses: actions/setup-node@v2.4.1
         with:
