@@ -61,6 +61,7 @@ jobs:
         - lua-filesystem
         - tmux
         - zsh
+        - ec2-utils
     steps:
       - name: checkout
         uses: actions/checkout@v2
