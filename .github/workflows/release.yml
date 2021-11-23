@@ -62,6 +62,7 @@ jobs:
         - tmux
         - zsh
         - ec2-utils
+        - amazon-ec2-net-utils
     steps:
       - name: checkout
         uses: actions/checkout@v2
