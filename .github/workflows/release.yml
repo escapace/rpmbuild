@@ -36,7 +36,7 @@ jobs:
       - name: available platforms
         run: echo ${{ steps.buildx.outputs.platforms }}
       - name: cache buildx
-        uses: actions/cache@v2.1.6
+        uses: actions/cache@v2.1.7
         with:
           path: ~/.buildx
           key: ${{ runner.os }}-node-${{ hashFiles('**/Dockerfile') }}
@@ -98,7 +98,7 @@ jobs:
         with:
           node-version: 16
       - name: cache node
-        uses: actions/cache@v2.1.6
+        uses: actions/cache@v2.1.7
         with:
           path: ~/.pnpm-store
           key: ${{ runner.os }}-node-${{ hashFiles('**/pnpm-lock.yaml') }}
