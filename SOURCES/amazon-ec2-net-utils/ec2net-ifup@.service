@@ -9,7 +9,8 @@
 
 [Unit]
 Description=Enable elastic network interfaces %i
-After=network-online.target
+After=NetworkManager.service
+
 #This makes sure all subprocesses will be killed if the ENI is removed
 BindsTo=sys-subsystem-net-devices-%i.device
 

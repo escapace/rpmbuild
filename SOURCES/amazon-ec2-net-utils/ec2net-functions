@@ -18,15 +18,10 @@ if [ -z "${INTERFACE}" ]; then
   exit
 fi
 
-# Support alternate locations for config files in order to facilitate
-# testing.
-ETCDIR=${ETCDIR:-/etc}
-SYSFSDIR=${SYSFSDIR:-/sys}
-
-HWADDR=$(cat "${SYSFSDIR}"/class/net/${INTERFACE}/address 2>/dev/null)
+HWADDR=$(cat /sys/class/net/${INTERFACE}/address 2>/dev/null)
 while test "${HWADDR}" = "00:00:00:00:00:00"; do
   sleep 0.1
-  HWADDR=$(cat "${SYSFSDIR}"/class/net/${INTERFACE}/address 2>/dev/null)
+  HWADDR=$(cat /sys/class/net/${INTERFACE}/address 2>/dev/null)
 done
 
 
@@ -42,10 +37,10 @@ let RTABLE+=10000
 METADATA_BASEURL="http://169.254.169.254/latest"
 METADATA_MAC_PATH="meta-data/network/interfaces/macs"
 METADATA_TOKEN_PATH="api/token"
-config_file="$ETCDIR/sysconfig/network-scripts/ifcfg-${INTERFACE}"
-route_file="$ETCDIR/sysconfig/network-scripts/route-${INTERFACE}"
-route6_file="$ETCDIR/sysconfig/network-scripts/route6-${INTERFACE}"
-dhclient_file="$ETCDIR/dhcp/dhclient-${INTERFACE}.conf"
+config_file="/etc/sysconfig/network-scripts/ifcfg-${INTERFACE}"
+route_file="/etc/sysconfig/network-scripts/route-${INTERFACE}"
+route6_file="/etc/sysconfig/network-scripts/route6-${INTERFACE}"
+dhclient_file="/etc/dhcp/dhclient-${INTERFACE}.conf"
 MAINROUTETABLE="yes"
 
 
@@ -84,8 +79,8 @@ if [ -s ${config_file} ]; then
 fi
 
 get_meta() {
-  logger --tag ec2net "[get_meta] Querying IMDS for ${METADATA_MAC_PATH}/${HWADDR}/${1}"
-  logger --tag ec2net "[get_meta] Getting token for IMDSv2."
+  # logger --tag ec2net "[get_meta] Querying IMDS for ${METADATA_MAC_PATH}/${HWADDR}/${1}"
+  # logger --tag ec2net "[get_meta] Getting token for IMDSv2."
 
   # IMDS may have become temporarily unreachable, retry
   max_attempts=60
