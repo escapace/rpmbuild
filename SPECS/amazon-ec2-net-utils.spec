@@ -1,6 +1,6 @@
 Name:    amazon-ec2-net-utils
 Version: 2.0.0
-Release: 1%{?dist}
+Release: 2%{?dist}
 Summary: utilities for managing network interfaces in Amazon EC2
 
 License: Apache 2.0
@@ -10,7 +10,7 @@ Source0: amazon-ec2-net-utils-%{version}.tar.xz
 BuildArch: noarch
 
 BuildRequires: make
-Requires: systemd-networkd, udev, curl, iproute
+Requires: systemd-networkd, udev, curl, iproute, retry
 
 %description
 amazon-ec2-net-utils-ng provides udev integration and helper utilities
