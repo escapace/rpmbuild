@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+set -euo pipefail
+
 # Retry a command with exponential backoff
 function retry {
   local maxAttempts=$1
@@ -7,11 +9,16 @@ function retry {
   local attemptCount=1
   shift 1
 
-  local status
-  local command="${@}"
+  local param
+  local P="$1"
+  for param in "${@:2}"; do P="$P '$param'"; done
 
   while [[ $attemptCount -le $maxAttempts ]]; do
-    bash -c "${command}" || status=$?
+    local status=0
+
+    (
+      exec bash -c "$P"
+    ) || status=$?
 
     if [[ $status -eq 0 ]]; then
       break
