@@ -3,15 +3,15 @@
 set -euo pipefail
 
 RETRY_MAX_EXPONENT="${RETRY_MAX_EXPONENT:-"8"}"
+RETRY_MAX_ATTEMPTS="${RETRY_MAX_ATTEMPTS:-"16"}"
 
 # Retry a command with exponential backoff
 function retry {
-  local maxAttempts=$1
-  local secondsDelay=2
-  local attemptCount=1
-  local maxExponent="${RETRY_MAX_EXPONENT}"
+  local -r maxAttempts="${RETRY_MAX_ATTEMPTS}"
+  local -r maxExponent="${RETRY_MAX_EXPONENT}"
 
-  shift 1
+  local attemptCount=1
+  local secondsDelay=2
 
   local param
   local P="$1"
@@ -19,14 +19,16 @@ function retry {
 
   if [[ ! "${maxAttempts}" =~ ^[0-9]+$ ]]
   then
-    echo "Not a number: ${maxAttempts}."
+    echo "RETRY_MAX_ATTEMPTS: not a number"
 
     exit 1
   fi
 
   if [[ ! "${maxExponent}" =~ ^[0-9]+$ ]]
   then
-    maxExponent=8
+    echo "RETRY_MAX_EXPONENT: not a number"
+
+    exit 1
   fi
 
   while [[ "${maxAttempts}" == "0" || "${attemptCount}" -le "${maxAttempts}" ]]
