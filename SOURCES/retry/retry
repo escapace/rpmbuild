@@ -2,18 +2,35 @@
 
 set -euo pipefail
 
+RETRY_MAX_EXPONENT="${RETRY_MAX_EXPONENT:-"8"}"
+
 # Retry a command with exponential backoff
 function retry {
   local maxAttempts=$1
-  local secondsDelay=1
+  local secondsDelay=2
   local attemptCount=1
+  local maxExponent="${RETRY_MAX_EXPONENT}"
+
   shift 1
 
   local param
   local P="$1"
   for param in "${@:2}"; do P="$P '$param'"; done
 
-  while [[ $attemptCount -le $maxAttempts ]]; do
+  if [[ ! "${maxAttempts}" =~ ^[0-9]+$ ]]
+  then
+    echo "Not a number: ${maxAttempts}."
+
+    exit 1
+  fi
+
+  if [[ ! "${maxExponent}" =~ ^[0-9]+$ ]]
+  then
+    maxExponent=8
+  fi
+
+  while [[ "${maxAttempts}" == "0" || "${attemptCount}" -le "${maxAttempts}" ]]
+  do
     local status=0
 
     (
@@ -24,18 +41,29 @@ function retry {
       break
     fi
 
-    if [[ $attemptCount -lt $maxAttempts ]]; then
-      echo "Command [$@] failed after attempt $attemptCount of $maxAttempts. Retrying in $secondsDelay second(s)." >&2
+    if [[ "${maxAttempts}" == "0" ]]
+    then
+      echo "Command [$P] failed after attempt $attemptCount. Retrying in $secondsDelay second(s)." >&2
 
-      sleep $secondsDelay
-    elif [[ $attemptCount -eq $maxAttempts ]]; then
-      echo "Command [$@] failed after $attemptCount attempt(s)" >&2
+      sleep "${secondsDelay}"
+    else
+      if [[ "${attemptCount}" -lt "${maxAttempts}" ]]; then
+        echo "Command [$P] failed after attempt $attemptCount of $maxAttempts. Retrying in $secondsDelay second(s)." >&2
 
-      return $status
+        sleep "${secondsDelay}"
+      elif [[ "${attemptCount}" -eq "${maxAttempts}" ]]; then
+        echo "Command [$P] failed after $attemptCount attempt(s)" >&2
+
+        return $status
+      fi
     fi
 
     attemptCount=$((attemptCount + 1))
-    secondsDelay=$((secondsDelay * 2))
+
+    if [[ ! "${attemptCount}" -gt "${maxExponent}" ]]
+    then
+      secondsDelay=$((secondsDelay * 2))
+    fi
   done
 }
 

@@ -1,5 +1,5 @@
 Name:      retry
-Version:   1
+Version:   1.1
 Release:   1
 Summary:   Retry a command with exponential backoff
 License:   MIT
