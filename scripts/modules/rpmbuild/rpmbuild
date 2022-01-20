@@ -45,7 +45,7 @@ rpmbuild () {
     local main="${scope}/rpmbuild"
 
     local data
-    data="${main}-$(kebabCase "${platform}")-${name}"
+    data="$(kebabCase "${main}-${platform}-${name}")"
 
     required "$name" || {
         error 'Nothing to do'
