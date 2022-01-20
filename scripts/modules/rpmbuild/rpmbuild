@@ -15,7 +15,7 @@ rpmbuild () {
           linux/amd64)
               defaultConfiguration="centos-stream+epel-next-9-x86_64"
               ;;
-          linux/arm64/v8)
+          linux/arm64)
               defaultConfiguration="centos-stream+epel-next-9-aarch64"
               ;;
           *)
