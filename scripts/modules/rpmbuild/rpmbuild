@@ -112,18 +112,18 @@ rpmbuild () {
 
         info "Processing \"${name}\" ..."
 
-        if ! docker inspect "${data}" > /dev/null 2>&1; then
-          docker create \
-            --platform "${platform}" \
-            -v /home/centos/cache \
-            --name "${data}" \
-            --entrypoint "/bin/true" \
-            "${main}"
-        fi
+        # if ! docker inspect "${data}" > /dev/null 2>&1; then
+        #   docker create \
+        #     --platform "${platform}" \
+        #     -v /home/centos/cache \
+        #     --name "${data}" \
+        #     --entrypoint "/bin/true" \
+        #     "${main}"
+        # fi
 
         docker run --platform "${platform}" \
             --rm --cap-add=SYS_ADMIN --privileged --security-opt seccomp=unconfined \
-            --volumes-from "${data}" \
+            # --volumes-from "${data}" \
             -v "${MANAGE_REPOSITORY}":/tmp/repository \
             -e HOST_UID="$(id -u)" \
             -e HOST_GID="$(id -g)" \
