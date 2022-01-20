@@ -2,22 +2,24 @@ FROM quay.io/centos/centos:stream9
 
 ENV container docker
 ENV DOCKER=true
-RUN dnf -y install \
-  https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm \
-  https://dl.fedoraproject.org/pub/epel/epel-next-release-latest-9.noarch.rpm \
-  bc \
-  coreutils \
-  expect \
-  findutils \
-  git \
-  gnupg \
-  mock \
-  rpm-build \
-  rpm-sign \
-  sudo \
-  yum-utils && \
-    yum clean all && \
-    rm -rf /var/cache/yum/
+
+RUN dnf config-manager --set-enabled crb && \
+  dnf -y install \
+    https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm \
+    https://dl.fedoraproject.org/pub/epel/epel-next-release-latest-9.noarch.rpm \
+    bc \
+    coreutils \
+    expect \
+    findutils \
+    git \
+    gnupg \
+    mock \
+    rpm-build \
+    rpm-sign \
+    sudo \
+    yum-utils && \
+  yum clean all && \
+  rm -rf /var/cache/yum/
 
 RUN adduser -u 1000 -G mock -U -m centos && \
   echo 'centos ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers && \
