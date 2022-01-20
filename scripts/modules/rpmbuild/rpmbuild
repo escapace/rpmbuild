@@ -77,12 +77,13 @@ rpmbuild () {
         cp -rf "/tmp/repository/SOURCES/${name}" "${SOURCES}"
         cp -rf "/tmp/repository/SPECS/${name}.spec" "${SPECS}/${name}.spec"
 
-        _ info "MOCK init"
-        mock -r "${configuration}" --dnf --init
+        _ info "Starting mock with ${configuration} configuration."
 
-        _ info "MOCK SRPM"
+        sudo /usr/bin/mock -r "${configuration}" --dnf --init
 
-        mock -r "${configuration}" \
+        _ info "Building SRPMs."
+
+        sudo /usr/bin/mock -r "${configuration}" \
             --no-clean \
             --buildsrpm \
             --spec="${SPECS}/${name}.spec" \
@@ -90,9 +91,9 @@ rpmbuild () {
             --resultdir="${SRPMS}" \
             --no-cleanup-after
 
-        _ info "MOCK RPM"
+        _ info "Building RPMs."
 
-        mock -r "${configuration}" \
+        sudo /usr/bin/mock -r "${configuration}" \
             --no-clean \
             --no-cleanup-after \
             --rebuild "$(find "${SRPMS}" -type f -name "*.src.rpm")" \
@@ -112,22 +113,22 @@ rpmbuild () {
 
         info "Processing \"${name}\" ..."
 
-        # if ! docker inspect "${data}" > /dev/null 2>&1; then
-        #   docker create \
-        #     --platform "${platform}" \
-        #     -v /home/centos/cache \
-        #     --name "${data}" \
-        #     --entrypoint "/bin/true" \
-        #     "${main}"
-        # fi
-
-            # --volumes-from "${data}" \
+        if ! docker inspect "${data}" > /dev/null 2>&1; then
+          docker create \
+            --platform "${platform}" \
+            -v /home/centos/cache \
+            --name "${data}" \
+            --entrypoint "/bin/true" \
+            "${main}"
+        fi
 
         docker run --platform "${platform}" \
-            --rm --cap-add=SYS_ADMIN --privileged --security-opt seccomp=unconfined \
+            --rm --privileged \
             -v "${MANAGE_REPOSITORY}":/tmp/repository \
+            --volumes-from "${data}" \
             -e HOST_UID="$(id -u)" \
             -e HOST_GID="$(id -g)" \
+            -e PLATFORM="${platform}" \
             "${main}" build "${name}"
     fi
 }

@@ -27,9 +27,10 @@ RUN adduser -u 1000 -G mock -U -m centos && \
   echo 'centos ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers && \
   mkdir -p /home/centos/cache /home/centos/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS} && \
   echo '%_topdir %(echo $HOME)/rpmbuild' > ~/.rpmmacros && \
-  chmod g+w /etc/mock/*.cfg && \
-  echo "config_opts['use_nspawn'] = False" >> /etc/mock/site-defaults.cfg && \
-  echo "config_opts['cache_topdir'] = '/home/centos/cache/mock'" >> /etc/mock/site-defaults.cfg
+  echo "config_opts['isolation'] = 'simple'" >> /etc/mock/site-defaults.cfg && \
+  echo "config_opts['cache_topdir'] = '/home/centos/cache/mock'" >> /etc/mock/site-defaults.cfg && \
+  chmod g+w /etc/mock/*.cfg
+
 
 WORKDIR /home/centos/rpmbuild
 VOLUME /tmp/repository
