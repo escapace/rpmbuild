@@ -55,24 +55,17 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        spec: []
-        platform: []
         include:
           - spec: retry
             platform: linux/amd64
-        include:
           - spec: ferm
             platform: linux/amd64
-        include:
           - spec: ec2-utils
             platform: linux/amd64
-        include:
           - spec: amazon-ec2-net-utils
             platform: linux/amd64
-        include:
           - spec: tmux
             platform: linux/amd64
-        include:
           - spec: tmux
             platform: linux/arm64
     steps:
