@@ -1,11 +1,11 @@
-FROM centos:8
+FROM quay.io/centos/centos:stream9
 
+ENV container docker
 ENV DOCKER=true
-RUN yum -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm && \
-    yum -y --setopt="tsflags=nodocs" upgrade && \
+
+RUN yum -y --setopt="tsflags=nodocs" upgrade && \
     yum -y --setopt="tsflags=nodocs" install --allowerasing bc \
                                              coreutils \
-                                             epel-release \
                                              expect \
                                              findutils \
                                              git \
@@ -26,7 +26,6 @@ RUN adduser -u 1000 -G mock -U -m centos && \
     chmod g+w /etc/mock/*.cfg && \
     echo "config_opts['use_nspawn'] = False" >> /etc/mock/site-defaults.cfg && \
     echo "config_opts['cache_topdir'] = '/home/centos/cache/mock'" >> /etc/mock/site-defaults.cfg
-
 
 WORKDIR /home/centos/rpmbuild
 VOLUME /tmp/repository

@@ -1,7 +1,7 @@
 const { readdirSync } = require('fs')
 const path = require('path')
 
-const assets = ['RPMS', 'SRPMS']
+const assets = ['RPMS'/* ,'SRPMS' */]
   .flatMap((folder) => readdirSync(path.join(__dirname, folder))
     .map((name) => path.join(__dirname, folder, name))
   )

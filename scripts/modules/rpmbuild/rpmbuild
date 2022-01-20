@@ -3,32 +3,49 @@
 # @import console/info
 # @import console/error
 # @import lang/truth
+# @import string/kebabCase
 
 rpmbuild () {
     local defaultConfiguration
+    local platform="${PLATFORM}"
 
-    case "$(uname -m)" in
-        x86_64|amd64)
-            defaultConfiguration="epel-8-x86_64"
-            ;;
-        aarch64)
-            defaultConfiguration="epel-8-aarch64"
-            ;;
-        *)
-            error "Unsupported architecture: $(uname -m)"
-            return 1
-    esac
+    if required "${platform}"
+    then
+      case "${platform}" in
+          linux/amd64)
+              defaultConfiguration="centos-stream+epel-next-9-x86_64"
+              ;;
+          linux/arm64/v8)
+              defaultConfiguration="centos-stream+epel-next-9-aarch64"
+              ;;
+          *)
+              error "Unsupported platform: ${platform}"
+              return 1
+      esac
+    else
+      case "$(uname -m)" in
+          x86_64|amd64)
+              platform="linux/amd64"
+              defaultConfiguration="centos-stream+epel-next-9-x86_64"
+              ;;
+          aarch64)
+              platform="linux/arm64/v8"
+              defaultConfiguration="centos-stream+epel-next-9-aarch64"
+              ;;
+          *)
+              error "Unsupported architecture: $(uname -m)"
+              return 1
+      esac
+    fi
 
     local name="$1"
+
     local configuration="${2:-${defaultConfiguration}}"
     local scope="${DOCKER_SCOPE:-internal}"
     local main="${scope}/rpmbuild"
-    local data="rpmbuild-cache"
 
-    if required "${RPMBUILD_PACKAGE}"
-    then
-        name="${RPMBUILD_PACKAGE}"
-    fi
+    local data
+    data="${main}-$(kebabCase "${platform}")-${name}"
 
     required "$name" || {
         error 'Nothing to do'
@@ -96,10 +113,12 @@ rpmbuild () {
         info "Processing \"${name}\" ..."
 
         if ! docker inspect "${data}" > /dev/null 2>&1; then
-            docker create -v /home/centos/cache \
-                --name "${data}" \
-                --entrypoint "/bin/true" \
-                "${main}"
+          docker create \
+            --platform "${platform}" \
+            -v /home/centos/cache \
+            --name "${data}" \
+            --entrypoint "/bin/true" \
+            "${main}"
         fi
 
         docker run --rm --privileged \
