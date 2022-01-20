@@ -1,13 +1,14 @@
 Summary:        For Easy Rule Making
 Name:           ferm
-Version:        2.5.1
+Version:        2.6
 Release:        1%{?dist}
 Group:          Applications/System
 License:        GPLv2+
-Source:         http://ferm.foo-projects.org/download/2.2/%{name}-%{version}.tar.gz
+Source:         http://ferm.foo-projects.org/download/%{version}/%{name}-%{version}.tar.xz
+Source1:        ferm.service
 URL:            http://ferm.foo-projects.org/
-BuildArchitectures: noarch
 
+BuildArchitectures:     noarch
 BuildRequires:          perl-generators
 BuildRequires:          perl(Data::Dumper)
 BuildRequires:          perl(File::Spec)
@@ -18,6 +19,8 @@ BuildRequires:          /usr/bin/pod2html
 Requires(post):         systemd
 Requires(preun):        systemd
 Requires(postun):       systemd
+
+%define _unpackaged_files_terminate_build 0
 
 %description
 Ferm is a tool to maintain complex firewalls, without having the
@@ -33,7 +36,11 @@ levels and lists.
 %build
 
 %install
+rm -Rf $RPM_BUILD_ROOT
+
 make install PREFIX=$RPM_BUILD_ROOT%{_prefix} DOCDIR=$RPM_BUILD_ROOT%{_pkgdocdir} MANDIR=$RPM_BUILD_ROOT%{_mandir}/man1
+
+install -m644 %{SOURCE1} $RPM_BUILD_ROOT%{_unitdir}
 
 %clean
 rm -rf $RPM_BUILD_ROOT
@@ -45,14 +52,11 @@ rm -rf $RPM_BUILD_ROOT
 %systemd_preun %{name}.service
 
 %postun
-%systemd_postun
+%systemd_postun %{name}.service
 
 %files
-# %doc AUTHORS README TODO NEWS examples/
-%{_pkgdocdir}
-%exclude %{_pkgdocdir}/COPYING
-%license COPYING
+%defattr(-,root,root,-)
+%doc AUTHORS COPYING README.rst TODO NEWS examples/
 %{_mandir}/man1/*
-%{_unitdir}/%{name}.service
 %{_sbindir}/import-ferm
 %{_sbindir}/ferm
