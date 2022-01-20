@@ -122,7 +122,7 @@ rpmbuild () {
         fi
 
         docker run --platform "${platform}" \
-            --rm --cap-add=SYS_ADMIN \
+            --rm --cap-add=SYS_ADMIN --privileged \
             --volumes-from "${data}" \
             -v "${MANAGE_REPOSITORY}":/tmp/repository \
             -e HOST_UID="$(id -u)" \
