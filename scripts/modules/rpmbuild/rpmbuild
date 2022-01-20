@@ -121,9 +121,10 @@ rpmbuild () {
         #     "${main}"
         # fi
 
+            # --volumes-from "${data}" \
+
         docker run --platform "${platform}" \
             --rm --cap-add=SYS_ADMIN --privileged --security-opt seccomp=unconfined \
-            # --volumes-from "${data}" \
             -v "${MANAGE_REPOSITORY}":/tmp/repository \
             -e HOST_UID="$(id -u)" \
             -e HOST_GID="$(id -g)" \
