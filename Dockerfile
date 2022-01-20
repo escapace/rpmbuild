@@ -3,11 +3,12 @@ FROM quay.io/centos/centos:stream9
 ENV container docker
 ENV DOCKER=true
 
-RUN dnf -y intall dnf-plugins-core && \
+RUN dnf -y install dnf-plugins-core && \
   dnf config-manager --set-enabled crb && \
   dnf -y install \
     https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm \
-    https://dl.fedoraproject.org/pub/epel/epel-next-release-latest-9.noarch.rpm \
+    https://dl.fedoraproject.org/pub/epel/epel-next-release-latest-9.noarch.rpm && \
+  dnf -y install \
     bc \
     coreutils \
     expect \
