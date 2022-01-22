@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# @description build RPM
+# @import lang/exists
+# @import lang/first
+# @import console/die
+# @import rpmbuild/rpmbuild
+
+main () {
+    verbose true
+    strict true
+
+    while read -d '' -r file
+    do
+        # echo "${file}"
+        local name
+
+        name="$(basename "${file}")"
+        echo "${name}"
+
+        # for script in "${!scripts[@]}"
+        # do
+        #     if [[ "${file}" =~ ${script}$ ]] &&
+        #        [[ "$(head -n 1 "${file}")" =~ ^(#!){1}.*(bash){1}.* ]] &&
+        #        [[ "$(basename "${file}")" =~ ^[-_a-zA-Z0-9]*$ ]]
+        #     then
+        #         if [[ "${file}" == "${MANAGE_DIRECTORY}/modules/"* ]]
+        #         then
+        #             manageModules["${script}"]="${file}"
+        #         elif [[ -n "${MANAGE_MODULE_DIRECTORY}" ]] &&
+        #              [[ "${MANAGE_MODULE_DIRECTORY}" != "${MANAGE_DIRECTORY}" ]] &&
+        #              [[ "${file}" == "${MANAGE_MODULE_DIRECTORY}/"* ]]
+        #         then
+        #             localModules["${script}"]="${file}"
+        #         fi
+        #     fi
+        # done
+    done < <(find "${MANAGE_REPOSITORY}/RPMS" -regex '.*\.rpm' -type f -print0 2> /dev/null)
+
+}

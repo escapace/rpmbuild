@@ -39,7 +39,7 @@ jobs:
         uses: actions/cache@v2.1.7
         with:
           path: ~/.buildx
-          key: ${{ runner.os }}-node-${{ hashFiles('**/Dockerfile') }}
+          key: ${{ runner.os }}-buildx-${{ hashFiles('**/Dockerfile') }}
           restore-keys: |
             ${{ runner.os }}-buildx-
       - name: build
@@ -60,7 +60,7 @@ jobs:
             platform: linux/amd64
           - spec: ferm
             platform: linux/amd64
-          - spec: ec2-utils
+          - spec: amazon-ec2-utils
             platform: linux/amd64
           - spec: amazon-ec2-net-utils
             platform: linux/amd64
@@ -77,9 +77,8 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Set up QEMU
+      - name: set up qemu
         if: ${{ matrix.platform == 'linux/arm64' }}
-        id: qemu
         uses: docker/setup-qemu-action@v1
         with:
           image: tonistiigi/binfmt:latest
@@ -107,26 +106,11 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v2
-      - name: setup node
-        uses: actions/setup-node@v2.5.1
-        with:
-          node-version: 16
-      - name: cache node
-        uses: actions/cache@v2.1.7
-        with:
-          path: ~/.pnpm-store
-          key: ${{ runner.os }}-node-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-      - name: install dependencies
-        run: |
-          npm install -g pnpm
-          pnpm install
       - name: download rpms
         uses: actions/download-artifact@v2
         with:
           name: assets
-      - name: release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pnpm exec semantic-release
+      # - name: release
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   run: pnpm exec semantic-release
