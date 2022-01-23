@@ -65,10 +65,10 @@ jobs:
             platform: linux/amd64
           - spec: amazon-ec2-net-utils
             platform: linux/amd64
-          # - spec: tmux
-          #   platform: linux/amd64
-          # - spec: tmux
-          #   platform: linux/arm64
+          - spec: tmux
+            platform: linux/amd64
+          - spec: tmux
+            platform: linux/arm64
     steps:
       - name: checkout
         uses: actions/checkout@v2
