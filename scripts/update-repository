@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# @description build RPM
-# @dependency rpm
-# @dependency createrepo
+# @description update repository
 # @import console/info
 # @import lang/truth
 
@@ -14,7 +12,7 @@ main () {
         local workdir="/tmp/repository"
         local releasever="9"
         local environment="stable"
-        local directory="${workdir}/releases/${environment}/linux/centos/${releasever}"
+        local directory="${workdir}/repository/${environment}/linux/centos/${releasever}"
         declare -A architectures
 
         architectures["x86_64"]="${directory}/x86_64"
@@ -80,6 +78,6 @@ main () {
             -v "${MANAGE_REPOSITORY}":/tmp/repository \
             -e HOST_UID="$(id -u)" \
             -e HOST_GID="$(id -g)" \
-            "${main}" createrepo
+            "${main}" update-repository
     fi
 }
