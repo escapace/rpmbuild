@@ -99,11 +99,11 @@ rpmbuild () {
             --rebuild "$(find "${SRPMS}" -type f -name "*.src.rpm")" \
             --resultdir="${RPMS}"
 
-        sudo find "${RPMS}" -type f -name "*.rpm" -not -name '*.src.rpm' -exec chown "${HOST_UID}:${HOST_GID}" {} \;
         sudo find "${RPMS}" -type f -name "*.rpm" -not -name '*.src.rpm' -exec cp -f {} /tmp/repository/RPMS \;
+        sudo find "/tmp/repository/RPMS" -type f -name "*.rpm" -not -name '*.src.rpm' -exec chown "${HOST_UID}:${HOST_GID}" {} \;
 
-        sudo find "${SRPMS}" -type f -name "*.src.rpm" -exec chown "${HOST_UID}:${HOST_GID}" {} \;
         sudo find "${SRPMS}" -type f -name "*.src.rpm" -exec cp -f {} /tmp/repository/SRPMS \;
+        sudo find "/tmp/repository/RPMS" -type f -name "*.src.rpm" -exec chown "${HOST_UID}:${HOST_GID}" {} \;
     else
         [ -f "${SPECS}/${name}.spec" ] || {
             error "spec ${name} does not exist"
@@ -113,7 +113,8 @@ rpmbuild () {
 
         info "Processing \"${name}\" ..."
 
-        if ! docker inspect "${data}" > /dev/null 2>&1; then
+        if ! docker inspect "${data}" &> /dev/null
+        then
           docker create \
             --platform "${platform}" \
             -v /home/centos/cache \

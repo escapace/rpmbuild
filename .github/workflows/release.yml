@@ -64,10 +64,10 @@ jobs:
             platform: linux/amd64
           - spec: amazon-ec2-net-utils
             platform: linux/amd64
-          - spec: tmux
-            platform: linux/amd64
-          - spec: tmux
-            platform: linux/arm64
+          # - spec: tmux
+          #   platform: linux/amd64
+          # - spec: tmux
+          #   platform: linux/arm64
     steps:
       - name: checkout
         uses: actions/checkout@v2
@@ -106,11 +106,19 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v2
+      - name: install rpmsign
+        run: sudo apt-get install -y rpm
+      - name: configure gpg key
+        run: echo "$PGP_PRIVATE_KEY_SECURITY" | gpg --import
+        env:
+          PGP_PRIVATE_KEY_SECURITY: ${{ secrets.PGP_PRIVATE_KEY_SECURITY }} 
       - name: download rpms
         uses: actions/download-artifact@v2
         with:
           name: assets
-      # - name: release
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #   run: pnpm exec semantic-release
+      - name: sign rpms
+        run: rpmsign --addsign --key-id=security@escapace.com RPMS/*.rpm SRPMS/*.rpm
+      - name: publish
+        run: ./manage createrepo
+      # - name: download repository
+      #   run: aws --region "${AWS_REGION}" s3 sync "s3://${AWS_BUCKET}" $TARGET_DIR

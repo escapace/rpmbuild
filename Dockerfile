@@ -11,6 +11,7 @@ RUN dnf install --assumeyes dnf-plugins-core && \
   dnf install --assumeyes --allowerasing \
     bc \
     coreutils \
+    createrepo_c \
     expect \
     findutils \
     git \
