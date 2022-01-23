@@ -1,4 +1,4 @@
-Name:      ec2-utils
+Name:      amazon-ec2-utils
 Summary:   A set of tools for running in EC2
 Version:   1.2
 Release:   45%{?dist}
