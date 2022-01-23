@@ -49,6 +49,7 @@ jobs:
           --cache-to   type=local,dest=$HOME/.buildx,mode=max
           --platform linux/amd64,linux/arm64
           --tag ghcr.io/${{ github.repository }}:${{ github.sha }}
+          --tag ghcr.io/${{ github.repository }}:latest
           --push .
   rpmbuild:
     needs: [container]
