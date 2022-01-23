@@ -9,10 +9,9 @@ main () {
 
     if _ truth "$DOCKER"
     then
-        local workdir="/tmp/repository"
         local releasever="9"
         local environment="stable"
-        local directory="${workdir}/repository/${environment}/linux/centos/${releasever}"
+        local directory="${MANAGE_REPOSITORY}/repository/${environment}/linux/centos/${releasever}"
         declare -A architectures
 
         architectures["x86_64"]="${directory}/x86_64"
@@ -35,7 +34,7 @@ main () {
                 mkdir -p "${target}" || true
                 cp -f "${file}" "${target}"
             fi
-        done < <(find "${workdir}/RPMS" -regex '.*\.rpm' -type f -print0 2> /dev/null)
+        done < <(find "/tmp/repository/RPMS" -regex '.*\.rpm' -type f -print0 2> /dev/null)
 
         while read -d '' -r file
         do
@@ -49,7 +48,7 @@ main () {
                     cp -f "${file}" "${architectures[$key]}"
                 done
             fi
-        done < <(find "${workdir}/RPMS" -regex '.*\.rpm' -type f -print0 2> /dev/null)
+        done < <(find "/tmp/repository/RPMS" -regex '.*\.rpm' -type f -print0 2> /dev/null)
 
         for basearch in "${!architectures[@]}"
         do
@@ -68,7 +67,8 @@ main () {
             fi
         done
 
-        sudo chown "${HOST_UID}:${HOST_GID}" -R "${workdir}"
+        sudo cp -rf "${MANAGE_REPOSITORY}/repository" "/tmp/repository"
+        sudo chown "${HOST_UID}:${HOST_GID}" -R "/tmp/repository/repository"
     else
         local scope="${DOCKER_SCOPE:-internal}"
         local main="${scope}/rpmbuild"
