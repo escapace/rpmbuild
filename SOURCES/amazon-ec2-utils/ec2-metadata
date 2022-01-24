@@ -37,7 +37,8 @@ Options:
 -r/--ramdisk-id           The ID of the RAM disk launched with this instance, if applicable.
 -e/--reservation-id       ID of the reservation.
 -s/--security-groups      Names of the security groups the instance is launched in. Only available if supplied at instance launch time
--d/--user-data            User-supplied data.Only available if supplied at instance launch time."
+-d/--user-data            User-supplied data.Only available if supplied at instance launch time.
+-g/--tags                 Tags assigned to this instance."
 }
 
 METADATA_BASEURL="http://169.254.169.254"
@@ -57,7 +58,8 @@ function set_imds_token()
 # param1 = query
 function get_meta()
 {
-	local imds_out=$(curl -s -q -H "X-aws-ec2-metadata-token:${IMDS_TOKEN}" -f ${METADATA_BASEURL}/latest/${1})
+	local imds_out
+	imds_out=$(curl -s -q -H "X-aws-ec2-metadata-token:${IMDS_TOKEN}" -f ${METADATA_BASEURL}/latest/${1})
 	echo -n "${imds_out}"
 }
 
@@ -80,7 +82,7 @@ function print_block-device-mapping()
 	x=$(get_meta meta-data/block-device-mapping/)
 	if [ -n "${x}" ]; then
 		for i in $x; do
-			echo -e '\t' $i: $(get_meta meta-data/block-device-mapping/$i)
+		    echo -e '\t' $i: "$(get_meta meta-data/block-device-mapping/$i)"
 		done
 	else
 		echo not available
@@ -101,7 +103,21 @@ function print_public-keys()
 			format=$(get_meta meta-data/public-keys/$index/)
 			echo format:$format
 			echo 'key:(begins from next line)'
-			echo $(get_meta meta-data/public-keys/$index/$format)
+			echo "$(get_meta meta-data/public-keys/$index/$format)"
+		done
+	else
+		echo not available
+	fi
+}
+
+#print tags
+function print_tags()
+{
+	echo 'tags: '
+	x=$(get_meta meta-data/tags/instance/)
+	if [ -n "${x}" ]; then
+		for i in $x; do
+			echo -e '\t' $i: "$(get_meta meta-data/tags/instance/$i)"
 		done
 	else
 		echo not available
@@ -129,6 +145,7 @@ function print_all()
 	print_normal_metric reservation-id /meta-data/reservation-id
 	print_normal_metric security-groups meta-data/security-groups
 	print_normal_metric user-data user-data
+	print_tags
 }
 
 #check if run inside an EC2 instance
@@ -180,7 +197,9 @@ while [ "$1" != "" ]; do
 																 ;;
 	-d | --user-data )             print_normal_metric user-data user-data
 																 ;;
-	-h | --help )                  print_help
+	-g | --tags )                  print_tags
+																 ;;
+	     --help )                  print_help
 								 exit
 																 ;;
 	--all )                        print_all

@@ -1,15 +1,13 @@
 Name:      amazon-ec2-utils
 Summary:   A set of tools for running in EC2
-Version:   1.2
-Release:   45%{?dist}
+Version:   2.0
+Release:   1%{?dist}
 License:   MIT
 Group:     System Tools
 
 Source0:   ec2-metadata
 Source1:   ec2udev-vbd
 Source2:   51-ec2-hvm-devices.rules
-Source3:   52-ec2-vcpu.rules
-Source15:  ec2udev-vcpu
 Source16:  60-cdrom_id.rules
 Source22:  70-ec2-nvme-devices.rules
 Source23:  ec2nvme-nsid
@@ -19,15 +17,18 @@ Source26:  53-ec2-read-ahead-kb.rules
 
 URL:       https://github.com/aws/amazon-ec2-utils
 BuildArch: noarch
-Provides:  amazon-ec2-utils = %{version}-%{release}
-Provides:  ec2-metadata
-Obsoletes: ec2-metadata
+Provides:  ec2-utils = %{version}-%{release}
+Obsoletes: ec2-utils < 2.0
+Provides:  ec2-metadata = %{version}-%{release}
+Obsoletes: ec2-metadata <= 0.1
 Requires:  curl
-BuildRequires: python3
+Requires:  python3
+BuildRequires: python3-devel
+BuildRequires: systemd-rpm-macros
 BuildRoot: %(mktemp -ud %{_tmppath}/%{name}-%{version}-%{release}-XXXXXX)
 
 %description
-ec2-utils contains a set of utilities for running in ec2.
+amazon-ec2-utils contains a set of utilities for running in ec2.
 
 %prep
 
@@ -36,80 +37,74 @@ ec2-utils contains a set of utilities for running in ec2.
 %install
 rm -rf $RPM_BUILD_ROOT
 mkdir -p $RPM_BUILD_ROOT%{_bindir}
-mkdir -p $RPM_BUILD_ROOT/opt/aws/bin
-%if 0%{?amzn} >= 2 || 0%{?fedora} >= 17 || 0%{?rhel} >= 7
-mkdir -p $RPM_BUILD_ROOT/usr/lib/udev
-%else
-mkdir -p $RPM_BUILD_ROOT/lib/udev
-%endif
-mkdir -p $RPM_BUILD_ROOT/sbin
+mkdir -p $RPM_BUILD_ROOT%{_udevrulesdir}
+mkdir -p $RPM_BUILD_ROOT/%{_sbindir}
 mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/udev/rules.d/
 mkdir -p $RPM_BUILD_ROOT%{_mandir}/man8/
 
 install -m755 %{SOURCE0} $RPM_BUILD_ROOT%{_bindir}
-install -m755 %{SOURCE1} $RPM_BUILD_ROOT/sbin/
-install -m755 %{SOURCE15} $RPM_BUILD_ROOT/sbin/
-install -m644 %{SOURCE2} $RPM_BUILD_ROOT%{_sysconfdir}/udev/rules.d/
-install -m645 %{SOURCE3} $RPM_BUILD_ROOT%{_sysconfdir}/udev/rules.d/
+install -m755 %{SOURCE1} $RPM_BUILD_ROOT/%{_sbindir}
+install -m644 %{SOURCE2} $RPM_BUILD_ROOT%{_udevrulesdir}
+install -m644 %{SOURCE25} $RPM_BUILD_ROOT%{_udevrulesdir}
+install -m644 %{SOURCE26} $RPM_BUILD_ROOT%{_udevrulesdir}
+# Install 60-cdrom_id.rules to /etc rather than %{_udevrulesdir}
+# because it is intended as an override of a systemd-provided rules
+# file:
 install -m644 %{SOURCE16} $RPM_BUILD_ROOT%{_sysconfdir}/udev/rules.d/
-install -m644 %{SOURCE25} $RPM_BUILD_ROOT%{_sysconfdir}/udev/rules.d/
-install -m644 %{SOURCE26} $RPM_BUILD_ROOT%{_sysconfdir}/udev/rules.d/
 
 #udev rules for nvme block devices and supporting scripts
-install -m644 %{SOURCE22} $RPM_BUILD_ROOT%{_sysconfdir}/udev/rules.d/
-%if 0%{?amzn} >= 2 || 0%{?fedora} >= 17 || 0%{?rhel} >= 7
-install -m755 %{SOURCE23} $RPM_BUILD_ROOT/usr/lib/udev
-%else
-install -m755 %{SOURCE23} $RPM_BUILD_ROOT/lib/udev
-%endif
-install -m755 %{SOURCE24} $RPM_BUILD_ROOT/sbin/
-
-ln -sf %{_bindir}/ec2-metadata $RPM_BUILD_ROOT/opt/aws/bin/ec2-metadata
+install -m644 %{SOURCE22} $RPM_BUILD_ROOT%{_udevrulesdir}
+install -m755 %{SOURCE23} $RPM_BUILD_ROOT%{_sbindir}/ec2nvme-nsid
+install -m755 %{SOURCE24} $RPM_BUILD_ROOT/%{_sbindir}
 
 %check
-%{__python3} -m py_compile %{SOURCE24}
+%{python3} -m py_compile %{SOURCE24}
 
 %clean
 rm -rf $RPM_BUILD_ROOT
 
 %files
 %{_bindir}/ec2-metadata
-/opt/aws/bin/ec2-metadata
-%if 0%{?amzn} >= 2 || 0%{?fedora} >= 17 || 0%{?rhel} >= 7
-/usr/lib/udev/ec2nvme-nsid
-%else
-/lib/udev/ec2nvme-nsid
-%endif
-/sbin/ebsnvme-id
-/sbin/ec2udev-vbd
-/sbin/ec2udev-vcpu
-%{_sysconfdir}/udev/rules.d/51-ec2-hvm-devices.rules
-%{_sysconfdir}/udev/rules.d/51-ec2-xen-vbd-devices.rules
-%{_sysconfdir}/udev/rules.d/52-ec2-vcpu.rules
-%{_sysconfdir}/udev/rules.d/53-ec2-read-ahead-kb.rules
-%{_sysconfdir}/udev/rules.d/60-cdrom_id.rules
-%{_sysconfdir}/udev/rules.d/70-ec2-nvme-devices.rules
+%{_sbindir}/ec2nvme-nsid
+%{_sbindir}/ebsnvme-id
+%{_sbindir}/ec2udev-vbd
+/usr/lib/udev/rules.d/51-ec2-hvm-devices.rules
+/usr/lib/udev/rules.d/51-ec2-xen-vbd-devices.rules
+/usr/lib/udev/rules.d/53-ec2-read-ahead-kb.rules
+/usr/lib/udev/rules.d/70-ec2-nvme-devices.rules
+/etc/udev/rules.d/60-cdrom_id.rules
 
 %changelog
-* Thu Jul 14 2021 Sai Harsha <ssuryad@amazon.com> 1.2-45
-- Disable timeout on EBS volumes
 
-* Tue Apr 20 2021 Hailey Mothershead <hailmo@amazon.com> 1.2-44
+* Thu Jan 20 2022 Noah Meyerhans <nmeyerha@amazon.com> 2.0-1
+- Update to 2.0
+- Update python dependencies to python3
+- Install udev rules to %{_udevrulesdir} rather than a hardcoded /etc/udev
+  location.
+- Install binaries to %{_sbindir} rather than hardcoded /sbin
+- Move ec2nvme-nsid to /usr/sbin rather than /usr/lib/udev
+- Drop ec2udev-vpcu and related udev rules
+- Fix an invalid substitution in 53-ec2-read-ahead-kb.rules
+- Drop the /opt/aws/bin/ec2-metadata symlink
+
+* Wed Nov 17 2021 Noah Meyerhans <nmeyerha@amazon.com> 1.3-5
+- Restrict NVME udev rules to "add" events
+
+* Wed Nov 17 2021 Hailey Mothershead <hailmo@amazon.com> 1.3-4
 - Add udev rule to increase read_ahead_kb when an NFS share is mounted
 
-* Tue Mar 16 2021 Heath Petty <hpetty@amazon.com> 1.2-43
-- Bump release
+* Wed Jul 14 2021 Sai Harsha <ssuryad@amazon.com> 1.3-3
+- Disable timeout on EBS volumes
 
-* Wed Oct 28 2020 Frederick Lefebvre <fredlef@amazon.com> 1.2-3
-- Fix error in ebsnvme-id when printing to stderr
+* Thu Oct 29 2020 Frederick Lefebvre <fredlef@amazon.com> 1.3-2
 - Add testing of python syntax to spec file
 
-* Mon May 18 2020 Suraj Jitindar Singh <surajjs@amazon.com> 1.2-2
-- Import github version 1.3 of amazon-ec2-utils
-- Update ec2-metadata documentation link
-- Add manual pages for ec2-metadata and ebsnvme-id
-- Fix copyright strings repo-wide
+* Mon May 18 2020 Suraj Jitindar Singh <surajjs@amazon.com> 1.3-1
 - Add udev rule to add by-path links for xen vbd devices
+
+* Tue Apr 28 2020 Frederick Lefebvre <fredlef@amazon.com> 1.3-1
+- Rename the project to amazon-ec2-utils
+- Add README file
 
 * Tue Feb 25 2020 Frederick Lefebvre <fredlef@amazon.com> 1.2-1
 - Fix output of multi-line fields
