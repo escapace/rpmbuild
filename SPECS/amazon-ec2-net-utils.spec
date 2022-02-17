@@ -1,6 +1,6 @@
 Name:    amazon-ec2-net-utils
 Version: 2.0.0
-Release: 3%{?dist}
+Release: 4%{?dist}
 Summary: utilities for managing network interfaces in Amazon EC2
 
 License: Apache 2.0
@@ -57,9 +57,12 @@ setup_policy_routes() {
 if [ $1 == 1 ]; then
     systemctl enable systemd-networkd.service
     systemctl enable systemd-resolved.service
+    systemctl disable NetworkManager-wait-online.service
+    systemctl disable NetworkManager.service
     [ -f /etc/resolv.conf ] && mv /etc/resolv.conf /etc/resolv.conf.old
     ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
     if [ -d /run/systemd ]; then
+	systemctl stop NetworkManager.service
 	systemctl start systemd-networkd.service
 	setup_policy_routes
 	systemctl start systemd-resolved.service
