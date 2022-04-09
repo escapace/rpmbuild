@@ -95,7 +95,7 @@ jobs:
         env:
           PLATFORM: ${{ matrix.platform }}
       - name: upload rpms
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
             retention-days: 5
             name: assets
