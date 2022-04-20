@@ -1,6 +1,6 @@
 Name:    amazon-ec2-net-utils
 Version: 2.0.0
-Release: 4%{?dist}
+Release: 10%{?dist}
 Summary: utilities for managing network interfaces in Amazon EC2
 
 License: Apache 2.0
