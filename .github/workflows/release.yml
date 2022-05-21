@@ -70,6 +70,10 @@ jobs:
             platform: linux/amd64
           - spec: tmux
             platform: linux/arm64
+          - spec: fish
+            platform: linux/amd64
+          - spec: fish
+            platform: linux/arm64
     steps:
       - name: checkout
         uses: actions/checkout@v3
