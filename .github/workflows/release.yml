@@ -97,11 +97,11 @@ jobs:
       - name: upload rpms
         uses: actions/upload-artifact@v3
         with:
-            retention-days: 5
-            name: assets
-            path: |
-              RPMS/*.rpm
-              SRPMS/*.rpm
+          retention-days: 5
+          name: assets
+          path: |
+            RPMS/*.rpm
+            SRPMS/*.rpm
   release:
     needs: [rpmbuild]
     concurrency: release
