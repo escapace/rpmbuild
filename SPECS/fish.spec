@@ -1,41 +1,9 @@
-## START: Set by rpmautospec
-## (rpmautospec version 0.2.5)
-%define autorelease(e:s:pb:) %{?-p:0.}%{lua:
-    release_number = 1;
-    base_release_number = tonumber(rpm.expand("%{?-b*}%{!?-b:1}"));
-    print(release_number + base_release_number - 1);
-}%{?-e:.%{-e*}}%{?-s:.%{-s*}}%{?dist}
-## END: Set by rpmautospec
-
 %global version_base 3.4.1
-#global gitnum 1075
-#global githash e0bc944d5c580fc39e9a3f159ef80caa3823dc16
-#global githashshort %%{lua:print(string.sub(rpm.expand('%{githash}'), 1, 11))}
 
 Name:           fish
-Version:        %{version_base}%{?gitnum:^%{gitnum}g%{githashshort}}
-Release:        %autorelease
+Version:        %{version_base}
+Release:        2%{?dist}
 Summary:        Friendly interactive shell
-# GPLv2
-#   - src/fish.cpp
-#   and rest…
-# GPLv2+
-#   - src/builtin_printf.cpp
-# BSD
-#   - src/fallback.cpp
-#   - share/tools/create_manpage_completions.py
-# ISC
-#   - src/env.cpp
-#   - src/utf8.cpp
-#   - src/utf8.h
-# LGPLv2+
-#   - src/wgetopt.cpp
-#   - src/wgetopt.h
-# MIT
-#   - share/completions/grunt.fish
-#   - share/tools/web_config/js/angular-route.js
-#   - share/tools/web_config/js/angular-sanitize.js
-#   - share/tools/web_config/js/angular.js
 License:        GPLv2 and BSD and ISC and LGPLv2+ and MIT
 URL:            https://fishshell.com
 %if %{undefined gitnum}
@@ -98,9 +66,9 @@ done
     -Dextra_functionsdir=%{_datadir}/%{name}/vendor_functions.d \
     -Dextra_confdir=%{_datadir}/%{name}/vendor_conf.d
 
-rm -f tests/checks/cd.fish 
+rm -rf tests
 
-%cmake_build -t all doc fish_tests
+%cmake_build
 
 # We still need to slightly manually adapt the pkgconfig file and remove
 # some /usr/local/ references (RHBZ#1869376)
@@ -121,7 +89,6 @@ cp -a CONTRIBUTING.rst %{buildroot}%{_pkgdocdir}
 
 %check
 # Sadly, ctest is broken
-%ninja_build -C %{_vpath_builddir} test
 desktop-file-validate %{buildroot}%{_datadir}/applications/fish.desktop
 
 %post
