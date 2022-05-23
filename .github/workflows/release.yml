@@ -58,22 +58,26 @@ jobs:
     strategy:
       matrix:
         include:
-          - spec: retry
+          # - spec: retry
+          #   platform: linux/amd64
+          - spec: neovim
             platform: linux/amd64
-          - spec: ferm
-            platform: linux/amd64
-          - spec: amazon-ec2-utils
-            platform: linux/amd64
-          - spec: amazon-ec2-net-utils
-            platform: linux/amd64
-          - spec: tmux
-            platform: linux/amd64
-          - spec: tmux
+          - spec: neovim
             platform: linux/arm64
-          - spec: fish
-            platform: linux/amd64
-          - spec: fish
-            platform: linux/arm64
+          # - spec: ferm
+          #   platform: linux/amd64
+          # - spec: amazon-ec2-utils
+          #   platform: linux/amd64
+          # - spec: amazon-ec2-net-utils
+          #   platform: linux/amd64
+          # - spec: tmux
+          #   platform: linux/amd64
+          # - spec: tmux
+          #   platform: linux/arm64
+          # - spec: fish
+          #   platform: linux/amd64
+          # - spec: fish
+          #   platform: linux/arm64
     steps:
       - name: checkout
         uses: actions/checkout@v3
