@@ -6,12 +6,6 @@ on:
     paths-ignore:
       - README.md
       - LICENSE
-  pull_request:
-    branches:
-      - trunk
-    paths-ignore:
-      - README.md
-      - LICENSE
   schedule:
     - cron: '10 16 * * 2'
   repository_dispatch:
@@ -122,7 +116,7 @@ jobs:
       - name: configure gpg key
         run: echo "$PGP_PRIVATE_KEY_SECURITY" | gpg --import
         env:
-          PGP_PRIVATE_KEY_SECURITY: ${{ secrets.PGP_PRIVATE_KEY_SECURITY }} 
+          PGP_PRIVATE_KEY_SECURITY: ${{ secrets.PGP_PRIVATE_KEY_SECURITY }}
       - name: download rpms
         uses: actions/download-artifact@v3
         with:
@@ -132,16 +126,16 @@ jobs:
       - name: download repository
         run: aws --region "${AWS_REGION}" s3 sync "s3://${AWS_BUCKET}" repository
         env:
-          AWS_BUCKET: ${{ secrets.AWS_BUCKET }} 
-          AWS_REGION: ${{ secrets.AWS_REGION }} 
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }} 
+          AWS_BUCKET: ${{ secrets.AWS_BUCKET }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       - name: update repository
         run: ./manage update-repository
       - name: upload repository
-        run: aws --region "${AWS_REGION}" s3 sync repository "s3://${AWS_BUCKET}" 
+        run: aws --region "${AWS_REGION}" s3 sync repository "s3://${AWS_BUCKET}"
         env:
-          AWS_BUCKET: ${{ secrets.AWS_BUCKET }} 
-          AWS_REGION: ${{ secrets.AWS_REGION }} 
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }} 
+          AWS_BUCKET: ${{ secrets.AWS_BUCKET }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
