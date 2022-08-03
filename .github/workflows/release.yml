@@ -76,6 +76,8 @@ jobs:
             platform: linux/amd64
           - spec: mosh
             platform: linux/arm64
+          - spec: lua-mmdb
+            platform: linux/amd64
     steps:
       - name: checkout
         uses: actions/checkout@v3
