@@ -72,6 +72,10 @@ jobs:
             platform: linux/amd64
           - spec: fish
             platform: linux/arm64
+          - spec: mosh
+            platform: linux/amd64
+          - spec: mosh
+            platform: linux/arm64
     steps:
       - name: checkout
         uses: actions/checkout@v3
