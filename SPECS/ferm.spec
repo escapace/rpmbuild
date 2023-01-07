@@ -1,10 +1,10 @@
 Summary:        For Easy Rule Making
 Name:           ferm
-Version:        2.6
+Version:        2.7
 Release:        1%{?dist}
 Group:          Applications/System
 License:        GPLv2+
-Source:         http://ferm.foo-projects.org/download/%{version}/%{name}-%{version}.tar.xz
+Source:         http://ferm.foo-projects.org/download/%{version}/%{name}-%{version}.tar.gz
 Source1:        ferm.service
 URL:            http://ferm.foo-projects.org/
 

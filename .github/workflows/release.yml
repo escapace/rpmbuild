@@ -95,7 +95,7 @@ jobs:
           platforms: "arm64"
       - name: container
         run: |
-          docker pull --platform ${{ matrix.platform }}  ghcr.io/${{ github.repository }}:${{ github.sha }}
+          docker pull --platform ${{ matrix.platform }} ghcr.io/${{ github.repository }}:${{ github.sha }}
           docker tag ghcr.io/${{ github.repository }}:${{ github.sha }} ghcr.io/${{ github.repository }}:latest
       - name: build
         run: |
