@@ -79,11 +79,11 @@ rpmbuild () {
 
         _ info "Starting mock with ${configuration} configuration."
 
-        sudo /usr/bin/mock -r "${configuration}" --dnf --init --old-chroot
+        sudo /usr/bin/mock -r "${configuration}" --dnf --init --isolation=simple
 
         _ info "Building SRPMs."
 
-        sudo /usr/bin/mock --old-chroot -r "${configuration}" \
+        sudo /usr/bin/mock --isolation=simple -r "${configuration}" \
             --no-clean \
             --buildsrpm \
             --spec="${SPECS}/${name}.spec" \
@@ -93,7 +93,7 @@ rpmbuild () {
 
         _ info "Building RPMs."
 
-        sudo /usr/bin/mock --old-chroot -r "${configuration}" \
+        sudo /usr/bin/mock --isolation=simple -r "${configuration}" \
             --no-clean \
             --no-cleanup-after \
             --rebuild "$(find "${SRPMS}" -type f -name "*.src.rpm")" \
