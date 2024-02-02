@@ -3,7 +3,9 @@ FROM quay.io/centos/centos:stream9
 ENV container docker
 ENV DOCKER=true
 
-RUN dnf install --assumeyes dnf-plugins-core && \
+RUN dnf clean all && \
+  dnf update --assumeyes && \
+  dnf install --assumeyes dnf-plugins-core && \
   dnf config-manager --set-enabled crb && \
   dnf install --assumeyes \
     https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm \
@@ -21,7 +23,7 @@ RUN dnf install --assumeyes dnf-plugins-core && \
     rpm-sign \
     sudo \
     yum-utils && \
-  yum clean all && \
+  dnf clean all && \
   rm -rf /var/cache/yum/ /var/cache/dnf/
 
 RUN adduser -u 1000 -G mock -U -m centos && \
@@ -31,7 +33,6 @@ RUN adduser -u 1000 -G mock -U -m centos && \
   echo "config_opts['isolation'] = 'simple'" >> /etc/mock/site-defaults.cfg && \
   echo "config_opts['cache_topdir'] = '/home/centos/cache/mock'" >> /etc/mock/site-defaults.cfg && \
   chmod g+w /etc/mock/*.cfg
-
 
 WORKDIR /home/centos/rpmbuild
 VOLUME /tmp/repository

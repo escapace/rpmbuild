@@ -123,7 +123,7 @@ rpmbuild () {
             "${main}"
         fi
 
-        docker run --platform "${platform}" \
+        eho docker run --platform "${platform}" \
             --rm --privileged \
             -v "${MANAGE_REPOSITORY}":/tmp/repository \
             --volumes-from "${data}" \
