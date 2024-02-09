@@ -62,10 +62,10 @@ jobs:
           #   platform: linux/amd64
           # - spec: tmux
           #   platform: linux/arm64
-          - spec: fish
-            platform: linux/amd64
-          - spec: fish
-            platform: linux/arm64
+          # - spec: fish
+          #   platform: linux/amd64
+          # - spec: fish
+          #   platform: linux/arm64
           # - spec: mosh
           #   platform: linux/amd64
           # - spec: mosh
@@ -100,7 +100,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           retention-days: 5
-          name: assets
+          name: assets-${{ matrix.platform }}-${{ matrix.spec }}
           path: |
             RPMS/*.rpm
             SRPMS/*.rpm
@@ -120,7 +120,8 @@ jobs:
       - name: download rpms
         uses: actions/download-artifact@v4
         with:
-          name: assets
+          pattern: assets-*
+          merge-multiple: true
       - name: sign rpms
         run: rpmsign --addsign --key-id=security@escapace.com RPMS/*.rpm SRPMS/*.rpm
       - name: download repository
