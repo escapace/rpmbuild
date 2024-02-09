@@ -124,18 +124,16 @@ jobs:
       - name: sign rpms
         run: rpmsign --addsign --key-id=security@escapace.com RPMS/*.rpm SRPMS/*.rpm
       - name: download repository
-        run: aws --region "${AWS_REGION}" s3 sync "s3://${AWS_BUCKET}" repository
+        run: aws s3 sync "s3://releases" repository
         env:
-          AWS_BUCKET: ${{ secrets.AWS_BUCKET }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_ENDPOINT_URL: ${{ secrets.AWS_ENDPOINT_URL }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       - name: update repository
         run: ./manage update-repository
       - name: upload repository
-        run: aws --region "${AWS_REGION}" s3 sync repository "s3://${AWS_BUCKET}"
+        run: aws s3 sync repository "s3://releases"
         env:
-          AWS_BUCKET: ${{ secrets.AWS_BUCKET }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_ENDPOINT_URL: ${{ secrets.AWS_ENDPOINT_URL }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
