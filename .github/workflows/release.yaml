@@ -47,31 +47,31 @@ jobs:
       matrix:
         include:
           - spec: retry
-            platform: linux/amd64
+            architecture: amd64
           # - spec: neovim
-          #   platform: linux/amd64
+          #   architecture: amd64
           # - spec: neovim
-          #   platform: linux/arm64
+          #   architecture: arm64
           - spec: ferm
-            platform: linux/amd64
+            architecture: amd64
           - spec: amazon-ec2-utils
-            platform: linux/amd64
+            architecture: amd64
           - spec: amazon-ec2-net-utils
-            platform: linux/amd64
+            architecture: amd64
           # - spec: tmux
-          #   platform: linux/amd64
+          #   architecture: amd64
           # - spec: tmux
-          #   platform: linux/arm64
+          #   architecture: arm64
           # - spec: fish
-          #   platform: linux/amd64
+          #   architecture: amd64
           # - spec: fish
-          #   platform: linux/arm64
+          #   architecture: arm64
           # - spec: mosh
-          #   platform: linux/amd64
+          #   architecture: amd64
           # - spec: mosh
-          #   platform: linux/arm64
+          #   architecture: arm64
           # - spec: lua-mmdb
-          #   platform: linux/amd64
+          #   architecture: amd64
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -82,25 +82,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: set up qemu
-        if: ${{ matrix.platform == 'linux/arm64' }}
+        if: ${{ matrix.architecture == 'arm64' }}
         uses: docker/setup-qemu-action@v3
         with:
           image: tonistiigi/binfmt:latest
           platforms: "arm64"
       - name: container
         run: |
-          docker pull --platform ${{ matrix.platform }} ghcr.io/${{ github.repository }}:${{ github.sha }}
+          docker pull --platform linux/${{ matrix.architecture }} ghcr.io/${{ github.repository }}:${{ github.sha }}
           docker tag ghcr.io/${{ github.repository }}:${{ github.sha }} ghcr.io/${{ github.repository }}:latest
       - name: build
         run: |
           ./manage build ${{ matrix.spec }}
         env:
-          PLATFORM: ${{ matrix.platform }}
+          PLATFORM: linux/${{ matrix.architecture }}
       - name: upload rpms
         uses: actions/upload-artifact@v4
         with:
           retention-days: 5
-          name: assets-${{ matrix.platform }}-${{ matrix.spec }}
+          name: assets-${{ matrix.architecture }}-${{ matrix.spec }}
           path: |
             RPMS/*.rpm
             SRPMS/*.rpm
