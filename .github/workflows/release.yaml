@@ -25,7 +25,7 @@ jobs:
       - name: available platforms
         run: echo ${{ steps.buildx.outputs.platforms }}
       - name: cache buildx
-        uses: actions/cache@v4.0.0
+        uses: actions/cache@v4.0.1
         with:
           path: ~/.buildx
           key: ${{ runner.os }}-buildx-${{ hashFiles('**/Dockerfile') }}
