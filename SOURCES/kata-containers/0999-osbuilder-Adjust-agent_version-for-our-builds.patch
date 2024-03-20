@@ -1,0 +1,33 @@
+From f1b45ad2295eb260d0c53f6d90ede35b4b2ad510 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Fabiano=20Fid=C3=AAncio?= <fidencio@redhat.com>
+Date: Wed, 1 Sep 2021 17:39:17 -0300
+Subject: [PATCH] Adjust agent_version for our builds
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+As we move things around when installing osbuilder, we need to adapt
+where we get the agent_version from.
+
+Signed-off-by: Fabiano Fidêncio <fidencio@redhat.com>
+---
+ tools/osbuilder/scripts/lib.sh | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/tools/osbuilder/scripts/lib.sh b/tools/osbuilder/scripts/lib.sh
+index 33a01f0..4225741 100644
+--- a/tools/osbuilder/scripts/lib.sh
++++ b/tools/osbuilder/scripts/lib.sh
+@@ -164,8 +164,7 @@ create_summary_file()
+ 	local agent="${AGENT_DEST}"
+ 	[ "$AGENT_INIT" = yes ] && agent="${init}"
+ 
+-	local -r agentdir="${script_dir}/../../../"
+-	local -r agent_version=$(cat ${agentdir}/VERSION)
++	agent_version=$(cat "${script_dir}/../../VERSION")
+ 
+ 	cat >"$file"<<-EOF
+ 	---
+-- 
+2.37.2
+

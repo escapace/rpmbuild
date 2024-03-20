@@ -1,116 +1,83 @@
 name: release
 on:
-  schedule:
-    - cron: '10 16 * * 2'
+  # schedule:
+  #   - cron: '10 16 * * 2'
   workflow_dispatch:
 
 jobs:
-  container:
-    runs-on: ubuntu-latest
-    concurrency: container
-    steps:
-      - name: checkout
-        uses: actions/checkout@v4
-      - name: docker login
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: setup qemu
-        uses: docker/setup-qemu-action@v3
-      - name: docker buildx
-        id: buildx
-        uses: docker/setup-buildx-action@v3
-      - name: available platforms
-        run: echo ${{ steps.buildx.outputs.platforms }}
-      - name: cache buildx
-        uses: actions/cache@v4.0.1
-        with:
-          path: ~/.buildx
-          key: ${{ runner.os }}-buildx-${{ hashFiles('**/Dockerfile') }}
-          restore-keys: |
-            ${{ runner.os }}-buildx-
-      - name: build
-        run: >-
-          docker buildx build
-          --cache-from type=local,src=$HOME/.buildx
-          --cache-to   type=local,dest=$HOME/.buildx,mode=max
-          --platform linux/amd64,linux/arm64
-          --tag ghcr.io/${{ github.repository }}:${{ github.sha }}
-          --tag ghcr.io/${{ github.repository }}:latest
-          --push .
-  rpmbuild:
-    needs: [container]
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - spec: retry
-            architecture: amd64
-          # - spec: neovim
-          #   architecture: amd64
-          # - spec: neovim
-          #   architecture: arm64
-          - spec: ferm
-            architecture: amd64
-          - spec: amazon-ec2-utils
-            architecture: amd64
-          - spec: amazon-ec2-net-utils
-            architecture: amd64
-          # - spec: tmux
-          #   architecture: amd64
-          # - spec: tmux
-          #   architecture: arm64
-          # - spec: fish
-          #   architecture: amd64
-          # - spec: fish
-          #   architecture: arm64
-          # - spec: mosh
-          #   architecture: amd64
-          # - spec: mosh
-          #   architecture: arm64
-          # - spec: lua-mmdb
-          #   architecture: amd64
-    steps:
-      - name: checkout
-        uses: actions/checkout@v4
-      - name: docker login
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: set up qemu
-        if: ${{ matrix.architecture == 'arm64' }}
-        uses: docker/setup-qemu-action@v3
-        with:
-          image: tonistiigi/binfmt:latest
-          platforms: "arm64"
-      - name: container
-        run: |
-          docker pull --platform linux/${{ matrix.architecture }} ghcr.io/${{ github.repository }}:${{ github.sha }}
-          docker tag ghcr.io/${{ github.repository }}:${{ github.sha }} ghcr.io/${{ github.repository }}:latest
-      - name: build
-        run: |
-          ./manage build ${{ matrix.spec }}
-        env:
-          PLATFORM: linux/${{ matrix.architecture }}
-      - name: upload rpms
-        uses: actions/upload-artifact@v4
-        with:
-          retention-days: 5
-          name: assets-${{ matrix.architecture }}-${{ matrix.spec }}
-          path: |
-            RPMS/*.rpm
-            SRPMS/*.rpm
+  # rpmbuild:
+  #   needs: [container]
+  #   runs-on: ubuntu-latest
+  #   strategy:
+  #     matrix:
+  #       include:
+  #         - spec: retry
+  #           architecture: amd64
+  #         # - spec: neovim
+  #         #   architecture: amd64
+  #         # - spec: neovim
+  #         #   architecture: arm64
+  #         - spec: ferm
+  #           architecture: amd64
+  #         - spec: amazon-ec2-utils
+  #           architecture: amd64
+  #         - spec: amazon-ec2-net-utils
+  #           architecture: amd64
+  #         # - spec: tmux
+  #         #   architecture: amd64
+  #         # - spec: tmux
+  #         #   architecture: arm64
+  #         # - spec: fish
+  #         #   architecture: amd64
+  #         # - spec: fish
+  #         #   architecture: arm64
+  #         # - spec: mosh
+  #         #   architecture: amd64
+  #         # - spec: mosh
+  #         #   architecture: arm64
+  #         # - spec: lua-mmdb
+  #         #   architecture: amd64
+  #   steps:
+  #     - name: checkout
+  #       uses: actions/checkout@v4
+  #     - name: docker login
+  #       uses: docker/login-action@v3
+  #       with:
+  #         registry: ghcr.io
+  #         username: ${{ github.actor }}
+  #         password: ${{ secrets.GITHUB_TOKEN }}
+  #     - name: set up qemu
+  #       if: ${{ matrix.architecture == 'arm64' }}
+  #       uses: docker/setup-qemu-action@v3
+  #       with:
+  #         image: tonistiigi/binfmt:latest
+  #         platforms: "arm64"
+  #     - name: container
+  #       run: |
+  #         docker pull --platform linux/${{ matrix.architecture }} ghcr.io/${{ github.repository }}:${{ github.sha }}
+  #         docker tag ghcr.io/${{ github.repository }}:${{ github.sha }} ghcr.io/${{ github.repository }}:latest
+  #     - name: build
+  #       run: |
+  #         ./manage build ${{ matrix.spec }}
+  #       env:
+  #         PLATFORM: linux/${{ matrix.architecture }}
+  #     - name: upload rpms
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         retention-days: 5
+  #         name: assets-${{ matrix.architecture }}-${{ matrix.spec }}
+  #         path: |
+  #           RPMS/*.rpm
+  #           SRPMS/*.rpm
   release:
-    needs: [rpmbuild]
+    # needs: [rpmbuild]
     concurrency: release
     runs-on: ubuntu-latest
     steps:
       - name: checkout
         uses: actions/checkout@v4
+        with:
+          lfs: true
       - name: install rpmsign
         run: sudo apt-get install -y rpm
       - name: configure gpg key
