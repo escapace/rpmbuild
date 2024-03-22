@@ -5,3 +5,4 @@ SRPMS/* filter=lfs diff=lfs merge=lfs -text
 /SOURCES/kata-containers/kata-containers-3.2.0-vendor.tar.gz filter=lfs diff=lfs merge=lfs -text
 /SOURCES/qemu/qemu-8.2.2.tar.xz filter=lfs diff=lfs merge=lfs -text
 /SRPMS/kata-containers-3.2.0-2.el9.3.src.rpm filter=lfs diff=lfs merge=lfs -text
+/SRPMS/qemu-8.2.2-1.el9.src.rpm filter=lfs diff=lfs merge=lfs -text
