@@ -78,6 +78,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           lfs: true
+          submodules: true
       - name: install rpmsign
         run: sudo apt-get install -y rpm
       - name: configure gpg key
