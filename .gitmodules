@@ -1,0 +1,3 @@
+[submodule "SOURCES/amazon-ec2-net-utils"]
+	path = SOURCES/amazon-ec2-net-utils
+	url = https://github.com/escapace/amazon-ec2-net-utils.git

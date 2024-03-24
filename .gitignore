@@ -1,6 +1,7 @@
 /repository
 .manage_modules
 !/SOURCES/**
+SOURCES/amazon-ec2-net-utils/*.tgz
 
 .DS_Store
 .awcache
