@@ -41,3 +41,5 @@ docker run --rm -it \
 
 If unable to sudo inside the container change the binfmt flag to `OCF` in
 `/usr/lib/binfmt.d/qemu-aarch64-static.conf`.
+
+sudo systemctl restart systemd-binfmt.service

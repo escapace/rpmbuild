@@ -5,14 +5,14 @@
 %endif
 
 Name:           neovim
-Version:        0.9.5
-Release:        4%{?dist}
+Version:        0.10.0~dev.2709.g00e9c6955
+Release:        1%{?dist}
 
 License:        Apache-2.0 AND Vim
 Summary:        Vim-fork focused on extensibility and agility
 Url:            https://neovim.io
 
-Source0:        https://github.com/neovim/neovim/archive/v%{version}/%{name}-%{version}.tar.gz
+Source0:        nightly.tar.gz
 Source1:        sysinit.vim
 
 BuildRequires:  autoconf
@@ -35,8 +35,8 @@ BuildRequires:  unzip
 Suggests:       (python2-neovim if python2)
 Suggests:       (python3-neovim if python3)
 # XSel provides access to the system clipboard
-Recommends:     xsel
-Recommends:     wl-clipboard
+# Recommends:     xsel
+# Recommends:     wl-clipboard
 
 %description
 Neovim is a refactor - and sometimes redactor - in the tradition of
@@ -49,7 +49,7 @@ excisions, Neovim is Vim. It is built for users who want the good
 parts of Vim, without compromise, and more.
 
 %prep
-%setup -q
+%setup -T -b 0 -q -n neovim-nightly
 
 %build
 
@@ -74,7 +74,7 @@ find %{buildroot}%{_datadir} \( -name "*.bat" -o -name "*.awk" \) \
 
 %files -f nvim.lang
 %license LICENSE.txt
-%doc BACKERS.md CONTRIBUTING.md README.md
+%doc CONTRIBUTING.md README.md
 %{_bindir}/nvim
 
 %{_mandir}/man1/nvim.1*
@@ -89,26 +89,8 @@ find %{buildroot}%{_datadir} \( -name "*.bat" -o -name "*.awk" \) \
 %{_libdir}/nvim/
 
 %changelog
-* Mon Mar 04 2024 Andreas Schneider <asn@redhat.com> - 0.9.5-4
-- resolves: #2222911 - Build with luajit on s390x
-
-* Thu Jan 25 2024 Fedora Release Engineering <releng@fedoraproject.org> - 0.9.5-3
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_40_Mass_Rebuild
-
-* Sun Jan 21 2024 Fedora Release Engineering <releng@fedoraproject.org> - 0.9.5-2
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_40_Mass_Rebuild
-
-* Tue Jan 02 2024 Andreas Schneider <asn@redhat.com> - 0.9.5-1
-- Update to version 0.9.5
-  * https://github.com/neovim/neovim/releases/tag/v0.9.5
-  * For bigger version bump changelog see `:help news`
-  * resolves: rhbz#2256278
-
-* Fri Oct 20 2023 Andreas Schneider <asn@redhat.com> - 0.9.4-1
-- Update to version 0.9.4
-  * https://github.com/neovim/neovim/releases/tag/v0.9.4
-  * For bigger version bump changelog see `:help news`
-  * resolves: rhbz#2243010
+* Wed Mar 27 2024 Aron Griffis <aron@scampersand.com> - 0.10.0~dev.2709.g00e9c6955-1
+- Nightly build from git master
 
 * Thu Sep 07 2023 Andreas Schneider <asn@redhat.com> - 0.9.2-1
 - Update to version 0.9.2
