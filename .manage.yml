@@ -1,0 +1,11 @@
+# Environment variables
+env:
+  DOCKER_SCOPE: "ghcr.io/escapace"
+
+# Enable manage repository scripts
+enable:
+  - help
+  - trust-escapace
+
+# Default script
+default: help

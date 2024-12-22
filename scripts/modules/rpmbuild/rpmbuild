@@ -1,0 +1,151 @@
+#!/usr/bin/env bash
+# @import lang/required
+# @import console/info
+# @import console/error
+# @import lang/truth
+# @import string/kebabCase
+
+rpmbuild () {
+    local defaultConfiguration
+    local platform="${PLATFORM}"
+
+    if required "${platform}"
+    then
+      case "${platform}" in
+          linux/amd64)
+              defaultConfiguration="centos-stream+epel-10-x86_64"
+              ;;
+          linux/arm64)
+              defaultConfiguration="centos-stream+epel-10-aarch64"
+              ;;
+          *)
+              error "Unsupported platform: ${platform}"
+              return 1
+      esac
+    else
+      case "$(uname -m)" in
+          x86_64|amd64)
+              platform="linux/amd64"
+              defaultConfiguration="centos-stream+epel-10-x86_64"
+              ;;
+          aarch64)
+              platform="linux/arm64/v8"
+              defaultConfiguration="centos-stream+epel-10-aarch64"
+              ;;
+          *)
+              error "Unsupported architecture: $(uname -m)"
+              return 1
+      esac
+    fi
+
+    local name="$1"
+
+    local configuration="${2:-${defaultConfiguration}}"
+    local scope="${DOCKER_SCOPE:-internal}"
+    local main="${scope}/rpmbuild"
+
+    local data
+    data="$(kebabCase "${main}-${platform}-${name}")"
+
+    required "$name" || {
+        error 'Nothing to do'
+
+        return 1
+    }
+
+    local SOURCES="${MANAGE_REPOSITORY}/SOURCES"
+    local SPECS="${MANAGE_REPOSITORY}/SPECS"
+    local SRPMS="${MANAGE_REPOSITORY}/SRPMS"
+    local RPMS="${MANAGE_REPOSITORY}/RPMS"
+
+    if truth "$DOCKER"
+    then
+        [[ -d "/tmp/repository/SOURCES/${name}" ]] || {
+            error "Cannot access ${name}: No such file or directory"
+
+            return 1
+        }
+
+        [[ -f "/tmp/repository/SPECS/${name}.spec" ]] || {
+            error "Cannot access ${name}: No such file or directory"
+
+            return 1
+        }
+
+        rm -rf "${MANAGE_REPOSITORY}"/{BUILD,RPMS,SPECS,SRPMS,SOURCES}
+        mkdir -p "${MANAGE_REPOSITORY}"/{BUILD,RPMS,SPECS,SRPMS}
+        cp -rf "/tmp/repository/SOURCES/${name}" "${SOURCES}"
+        cp -rf "/tmp/repository/SPECS/${name}.spec" "${SPECS}/${name}.spec"
+
+        _ info "Starting mock with ${configuration} configuration."
+
+        sudo /usr/bin/mock --enable-network  -r "${configuration}" --no-bootstrap-image --dnf --init --isolation=simple
+
+        _ info "Building SRPMs."
+
+        if [[ "${name}" == "knot-resolver" ]]; then
+          sudo /usr/bin/mock --enable-network  --isolation=simple --no-bootstrap-image -r "${configuration}" \
+              --no-clean \
+              --no-cleanup-after \
+              --install "/tmp/repository/RPMS/jemalloc-5.3.0-6.el10.$(uname -m).rpm" \
+              --install "/tmp/repository/RPMS/jemalloc-devel-5.3.0-6.el10.$(uname -m).rpm"
+        fi
+
+        if [[ "${name}" == "qemu" ]]; then
+          sudo /usr/bin/mock --enable-network  --isolation=simple --no-bootstrap-image -r "${configuration}" \
+              --no-clean \
+              --no-cleanup-after \
+              --install "/tmp/repository/RPMS/libiscsi-devel-1.20.0-3.el10.$(uname -m).rpm" \
+              --install "/tmp/repository/RPMS/libiscsi-1.20.0-3.el10.$(uname -m).rpm"
+        fi
+
+        sudo /usr/bin/mock --enable-network  --isolation=simple --no-bootstrap-image -r "${configuration}" \
+            --no-clean \
+            --no-cleanup-after \
+            --buildsrpm \
+            --spec="${SPECS}/${name}.spec" \
+            --sources="${SOURCES}" \
+            --resultdir="${SRPMS}"
+
+        _ info "Building RPMs."
+
+        sudo /usr/bin/mock --enable-network --isolation=simple --no-bootstrap-image -r "${configuration}" \
+            --no-clean \
+            --no-cleanup-after \
+            --rebuild "$(find "${SRPMS}" -type f -name "*.src.rpm")" \
+            --resultdir="${RPMS}"
+
+        sudo find "${RPMS}" -type f -name "*.rpm" -not -name '*.src.rpm' -exec cp -f {} /tmp/repository/RPMS \;
+        sudo find "/tmp/repository/RPMS" -type f -name "*.rpm" -not -name '*.src.rpm' -exec chown "${HOST_UID}:${HOST_GID}" {} \;
+
+        sudo find "${SRPMS}" -type f -name "*.src.rpm" -exec cp -f {} /tmp/repository/SRPMS \;
+        sudo find "/tmp/repository/RPMS" -type f -name "*.src.rpm" -exec chown "${HOST_UID}:${HOST_GID}" {} \;
+    else
+        [ -f "${SPECS}/${name}.spec" ] || {
+            error "spec ${name} does not exist"
+
+            return 1
+        }
+
+        info "Processing \"${name}\" ..."
+
+        if ! docker inspect "${data}" &> /dev/null
+        then
+          docker create \
+            --platform "${platform}" \
+            -v /home/centos/cache \
+            --name "${data}" \
+            --entrypoint "/bin/true" \
+            "${main}"
+        fi
+
+        docker run --platform "${platform}" \
+            --rm --privileged \
+            -v "${MANAGE_REPOSITORY}":/tmp/repository \
+            --volumes-from "${data}" \
+            -e HOST_UID="$(id -u)" \
+            -e HOST_GID="$(id -g)" \
+            -e PLATFORM="${platform}" \
+            "${main}" build "${name}"
+    fi
+}

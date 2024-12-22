@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# @description arcive amazon-ec2-net-utils
+# @import lang/exists
+# @import lang/first
+# @import console/die
+# @import rpmbuild/rpmbuild
+
+main() {
+  verbose true
+  strict true
+
+  local version
+  local code=0
+
+  cp -f SOURCES/amazon-ec2-net-utils/amazon-ec2-net-utils.spec SPECS/amazon-ec2-net-utils.spec
+
+  version=$(cat SPECS/amazon-ec2-net-utils.spec | grep base_version | grep -oP '\b\d+\.\d+\.\d+\b')
+  local name="amazon-ec2-net-utils-${version}"
+  local directory_temporary="$(mktemp -d)"
+  local directory_source="SOURCES/amazon-ec2-net-utils"
+
+  {
+    rm -f "${directory_source}/${name}.tar.gz"
+    cp -rf "${directory_source}" "${directory_temporary}/"
+    mv "${directory_temporary}/amazon-ec2-net-utils" "${directory_temporary}/${name}"
+    tar -C "${directory_temporary}" -czf "${directory_source}/${name}.tar.gz" "${name}"
+  } || code=$((code+1))
+
+  rm -rf "${directory_temporary}"
+
+  return "${code}"
+}

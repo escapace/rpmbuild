@@ -1,0 +1,509 @@
+#!/usr/bin/python3
+import argparse
+import collections
+import operator
+import glob
+import re
+import sys
+import shutil
+import os.path
+from subprocess import CalledProcessError, PIPE, Popen, TimeoutExpired
+from urllib import request
+
+__doc__ = '''
+A tool to download sources and patches from specfiles.
+
+If the specfile is not specified, and current directory contains just
+one specfile, that specfile will be used by default.
+
+When invoked without arguments:
+
+$ spectool
+
+all Sources and Patches specified in the specfile will be listed.
+
+To download all Sources and Patches:
+
+$ spectool -g
+
+Signatures will be verified if they are listed among the Sources.
+'''
+
+__version__ = '2.0'
+PROTOCOLS = {'http', 'https', 'ftp'}
+dbprint = None
+
+USER_AGENT = 'spectool/' + __version__
+
+DEFINES = collections.OrderedDict()
+
+# Sure wish I had Python 3.5's subprocess.run(), so here's a hacked one.
+class CompletedProcess(object):
+    """A hacked version of Python 3.5's subprocess.CompletedProcess."""
+    def __init__(self, args, returncode, stdout=None, stderr=None):
+        self.args = args
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+class ProcError(CalledProcessError):
+    """A CalledProcessError that also has stderr and stdout, like py3.5's."""
+    def __init__(self, args, returncode, **kwargs):
+        self.stdout = kwargs.get('stdout', None)
+        self.stderr = kwargs.get('stderr', None)
+        super().__init__(returncode, args, self.stderr)
+
+    def __str__(self):
+        out = "Return code {} ".format(self.returncode)
+        if self.stderr:
+            out = out + "\nOutput:\n{}".format(self.stderr)
+        return out
+
+
+def run(*popenargs, timeout=None, **kwargs):
+    """A hacked version of Python 3.5's subprocess.run() command."""
+    kwargs['stdout'] = kwargs['stderr'] = PIPE
+
+    dbprint('Shell: {}'.format(' '.join(*popenargs)))
+    with Popen(*popenargs, **kwargs) as process:
+        try:
+            stdout, stderr = process.communicate(input, timeout=timeout)
+        except TimeoutExpired:
+            dbprint('-> Timed out')
+            process.kill()
+            stdout, stderr = process.communicate()
+            raise TimeoutExpired(process.args, timeout, output=stdout,
+                                 stderr=stderr)
+        except:
+            dbprint('-> Error on call')
+            process.kill()
+            process.wait()
+            raise
+        retcode = process.poll()
+        dbprint('=> Return code: {}'.format(retcode))
+        stdout = stdout.decode('utf-8')
+        stderr = stderr.decode('utf-8')
+        if retcode:
+            raise ProcError(process.args, retcode, stdout=stdout, stderr=stderr)
+    return CompletedProcess(process.args, retcode, stdout, stderr)
+
+def error(message, exception=None):
+    print(message, file=sys.stderr)
+    if exception is not None:
+        print(exception, file=sys.stderr)
+    sys.exit(1)
+
+class Spec(object):
+    """Object to encapsulate a spec file and provide the info we want."""
+    interesting_tags = ['source(?P<snum>[0-9]*)', 'patch(?P<pnum>[0-9]*)', 'name', 'version', 'release']
+    # Join all of those tags together in a big regex
+    tag_re = re.compile("^(?P<tag>" + "|".join(interesting_tags) + "):\s*(?P<val>.*)\s*$", re.IGNORECASE)
+
+    def __init__(self, spec):
+        self.spec = spec
+        self.sources = []
+        self.sourcenums = []
+        self.patches = []
+        self.patchnums = []
+        self.epoch = 0
+        self.name = self.version = self.release = None
+
+        self.parse()
+
+    def parse(self):
+        """Call rpmspec and process the result, looking for intersting tags."""
+        cmdline = ['rpmspec', '-P', self.spec]
+        stdout = run_rpm_cmd(cmdline)
+        for line in stdout.splitlines():
+            self.parseline(line)
+
+    def parseline(self, line):
+        """Parse a spec line looking for interesting tags."""
+        m = self.tag_re.match(line)
+        if not m:
+            return
+
+        tag = m.group('tag').lower()
+        val = m.group('val')
+        if tag == 'name':
+            self.name = val
+        elif tag == 'version':
+            self.version = val
+        elif tag == 'release':
+            self.release = val
+        elif tag == 'epoch':
+            self.epoch = val
+        elif tag.startswith('source'):
+            self.sources.append(val)
+            self.sourcenums.append(int(m.group('snum') or 0))
+        elif tag.startswith('patch'):
+            self.patches.append(val)
+            self.patchnums.append(int(m.group('pnum') or 0))
+
+class SelectionError(Exception):
+    pass
+
+
+class Selections(object):
+    """Quick class to handle the sources and patches the user wants."""
+    def __init__(self, spec, options):
+        self.allsources = spec.sources
+        self.allsourcenums = spec.sourcenums
+        self.sourcenums = []
+        self.sources = []
+
+        self.allpatchnums = spec.patchnums
+        self.allpatches = spec.patches
+        self.patchnums = []
+        self.patches = []
+
+        self.get_selected_items_from_options(options)
+
+    def get_selected_items_from_options(self, opts):
+        """Get the lists of sources and patches the user selected."""
+        if opts.allsources or opts.all:
+            for source, num in sorted(zip(self.allsources, self.allsourcenums), key=operator.itemgetter(1)):
+                self.sourcenums.append(num)
+                self.sources.append(source)
+
+        if opts.allpatches or opts.all:
+            for patch, num in sorted(zip(self.allpatches, self.allpatchnums), key=operator.itemgetter(1)):
+                self.patchnums.append(num)
+                self.patches.append(patch)
+
+        for source in opts.sourcelist:
+            if source in self.allsourcenums:
+                self.sourcenums.append(source)
+                self.sources.append(self.allsources[source])
+            else:
+                raise SelectionError('No source item {}.'.format(source))
+
+        for patch in opts.patchlist:
+            if patch in self.allpatchnums:
+                self.patchnums.append(patch)
+                self.patches.append(self.allpatches[patch])
+            else:
+                raise SelectionError('No patch item {}.'.format(patch))
+
+def parseopts():
+    def flatten_commas(items):
+        """Turn a bunch of comma-separated lists into one flat list."""
+        out = []
+        for i in items:
+            for j in i.split(','):
+                try:
+                    out.append(int(j))
+                except ValueError:
+                    error('Invalid value: {}'.format(j))
+        return out
+
+    parser = argparse.ArgumentParser(
+            description=__doc__,
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+            add_help=False)
+    parser.add_argument('spec', help='The specfile to be parsed', nargs='?')
+
+    mode = parser.add_argument_group('Operating mode')
+    mode1 = mode.add_mutually_exclusive_group()
+    mode1.add_argument('-l', '--list-files', '--lf', action='store_true',
+            help='lists the expanded sources/patches (default)')
+    mode1.add_argument('-g', '--get-files', '--gf', action='store_true',
+            help='gets the sources/patches that are listed with a URL')
+    mode1.add_argument('--verify', action='store_true', default=None,
+            help='verify the signatures on files')
+    mode.add_argument('-h', '--help', action='help',
+            help="display this help screen")
+    mode1.add_argument('--version', action='version', version='spectool ' + __version__)
+
+    select = parser.add_argument_group('Files on which to operate')
+    select.add_argument('-A', '--all', action='store_true', default=True,
+            help='all files, sources and patches (default)')
+    select.add_argument('-S', '--sources', action='store_true', dest='allsources',
+            help='all sources')
+    select.add_argument('-P', '--patches', action='store_true', dest='allpatches',
+            help='all patches')
+    select.add_argument('-s', '--source', action='append', dest='sourcelist',
+            help='specified source numbers', metavar='x[,y[,...]]')
+    select.add_argument('-p', '--patch', action='append', dest='patchlist',
+            help='specified patch numbers', metavar='a[,b[,...]]')
+
+    misc = parser.add_argument_group('Miscellaneous')
+    misc.add_argument('-d', '--define', action='append', dest='defines',
+            metavar="'macro value'",
+            help="defines RPM macro 'macro' to be 'value'")
+
+    misc1 = misc.add_mutually_exclusive_group()
+    misc1.add_argument('-C', '--directory', dest='downloaddir', metavar='dir',
+            help="download into specified directory (default '.')")
+    misc1.add_argument('-R', '--sourcedir', action='store_true', dest='downloadtosourcedir',
+            help="download into RPM's %%{_sourcedir}")
+
+    misc.add_argument('-n', '--dryrun', '--dry-run', action='store_true', dest='dryrun',
+            help="don't download anything; just show what would be done")
+    misc.add_argument('-f', '--force', action='store_true',
+            help="try to unlink and download if target files exist")
+
+    misc.add_argument('--keyring', metavar='FILE-OR-NUMBER',
+            help="path to file or Source number for the keyring with trusted key")
+    misc.add_argument('--no-verify', action='store_false', dest='verify',
+            help='skip signatures verification')
+
+    misc.add_argument('-D', '--debug', action='store_true',
+            help="output debug info, don't clean up when done")
+
+    opts = parser.parse_args()
+
+    if opts.spec is None:
+        files = glob.glob('*.spec')
+        if not files:
+            error("Spec-file was not specified and current directory does not contain any")
+        if len(files) > 1:
+            error("Spec-file was not specified and current directory contains multiple")
+        opts.spec = files[0]
+
+    # Can argparse do this for me?
+    if opts.allsources or opts.allpatches:
+        opts.all = False
+    if opts.sourcelist:
+        opts.all = opts.allsources = False
+    else:
+        opts.sourcelist = []
+
+    if opts.patchlist:
+        opts.all = opts.allpatches = False
+    else:
+        opts.patchlist = []
+
+    opts.sourcelist = flatten_commas(opts.sourcelist)
+    opts.patchlist = flatten_commas(opts.patchlist)
+
+    if opts.debug:
+        def _dbprint(*dbargs):
+            print(*dbargs)
+    else:
+        _dbprint = lambda *x: None
+    global dbprint
+    dbprint = _dbprint
+
+    return opts
+
+def check_rpmspec():
+    try:
+        run(['rpmspec', '--version'])
+    except CalledProcessError:
+        error("rpmspec does not appear to be installed.")
+
+def run_rpm_cmd(cmdline):
+    for macro,value in DEFINES.items():
+        cmdline.extend(['--define', '{} {}'.format(macro, value)])
+    try:
+        proc = run(cmdline)
+    except ProcError as e:
+        error('Error: {} call failed!'.format(cmdline[0]))
+    return proc.stdout
+
+def expand_sourcedir_macro(spec):
+    cmdline = ['rpm']
+    for arg in 'epoch', 'name', 'release', 'version':
+        cmdline.extend(['--define', '{} {}'.format(arg, getattr(spec, arg))])
+    cmdline.extend(['--eval', '%_sourcedir'])
+    stdout = run_rpm_cmd(cmdline)
+    return stdout.split()
+
+def get_download_location(spec, opts):
+    dir = '.'
+    if opts.downloaddir:
+        dir = opts.downloaddir
+    if not opts.downloadtosourcedir:
+        return dir
+    return expand_sourcedir_macro(spec)
+
+
+def generate_asset_list(spec, opts, selected):
+    if opts.allsources or opts.all:
+        for num, source in sorted(zip(spec.sourcenums, spec.sources)):
+            yield 'Source', num, source
+
+    if opts.allpatches or opts.all:
+        for num, patch in sorted(zip(spec.patchnums, spec.patches)):
+            yield 'Patch', num, patch
+
+    for source in opts.sourcelist:
+        if source in spec.sourcenums:
+            yield 'Source', source, spec.sources[source]
+        else:
+            yield 'Error', source, 'No source item {}'.format(source)
+
+    for patch in opts.patchlist:
+        if patch in spec.patchnums:
+            yield 'Patch', patch, spec.patches[patch]
+        else:
+            yield 'Error', patch, 'No patch item {}'.format(patch)
+
+def list_files(spec, opts, selected):
+    for typ, num, asset in generate_asset_list(spec, opts, selected):
+        if typ == 'Error':
+            print(asset)
+        else:
+            print('{}{}: {}'.format(typ, num, asset))
+
+
+def is_downloadable(url):
+    """Check that string is a valid URL of a protocol which we can handle."""
+    return url.split('://')[0] in PROTOCOLS
+
+def is_signature(url):
+    """Check that path looks like a signature."""
+    return url.endswith(".gpg") or url.endswith(".sig")
+
+def is_keyring(url):
+    """Check that path looks like a keyring.
+
+    Sometimes .gpg extension is also used for keyrings, so if we don't
+    find a .kbx file, we should look for an extraneous .gpg file.
+    """
+    return url.endswith(".kbx")
+
+def path_download_name(url):
+    return url.split('/')[-1]
+
+def download_file(url, dest):
+    req = request.Request(url, headers={'User-Agent': USER_AGENT})
+    with request.urlopen(req) as inp:
+        with open(dest, 'wb') as out:
+            shutil.copyfileobj(inp, out)
+
+def download_files(spec, opts, selected):
+    """
+    Fetch the sources.
+    """
+    dir = get_download_location(spec, opts)
+    for typ, num, asset in generate_asset_list(spec, opts, selected):
+        if typ == 'Error':
+            raise IndexError(asset)
+        if not is_downloadable(asset):
+            print('{}{}: {} cannot be downloaded'.format(typ, num, asset))
+        else:
+            dest = os.path.join(dir, path_download_name(asset))
+            if not opts.force and os.path.exists(dest):
+                print('{}{}: {} already exists'.format(typ, num, dest))
+            else:
+                print('{}{}: {} → {}'.format(typ, num, asset, dest))
+                if not opts.dryrun:
+                    download_file(asset, dest)
+
+def verify_signature(path, signature, keyring):
+    if not os.path.exists(path):
+        print('{} not downloaded yet, not checking'.format(path))
+        return
+
+    cmdline = ['gpgv2', '--quiet', '--keyring', keyring, signature, path]
+    try:
+        proc = run(cmdline)
+    except ProcError as e:
+        print(e.stdout)
+        error('Error: signature verification failed for {}!'.format(path), e)
+    print('{} has a good signature'.format(path))
+
+def verify_file(path, signatures, keyring):
+    for ext in ('.sig', '.gpg'):
+        if path + ext in signatures:
+            return verify_signature(path, path + ext, keyring)
+    else:
+        print('No signature for {}'.format(path))
+
+def verify(spec, opts, selected):
+    """
+    Verify signatures on files.
+    """
+    dir = get_download_location(spec, opts)
+
+    if opts.keyring:
+        try:
+            num = int(opts.keyring)
+        except ValueError:
+            keyring = opts.keyring
+            if '/' not in keyring:
+                # gpgv2 will look in ~/.gnupg for the keyring if it not a path
+                keyring = os.path.join('.', keyring)
+        else:
+            if num not in spec.sourcenums:
+                error("No source item {} (for the keyring)")
+            keyring = os.path.join(dir, path_download_name(spec.sources[num]))
+    else:
+        keyring = None
+
+    sigs = set()
+    files = set()
+    keyrings = set()
+    for typ, num, asset in generate_asset_list(spec, opts, selected):
+        if typ == 'Error':
+            raise IndexError(asset)
+        path = os.path.join(dir, path_download_name(asset))
+        if is_signature(path):
+            sigs.add(path)
+        else:
+            files.add(path)
+
+        if is_keyring(path):
+            keyrings.add(path)
+
+    if keyring is None:
+        # try to guess
+        if len(keyrings) == 1:
+            keyring == keyrings.pop()
+        elif len(keyrings) >= 2:
+            error('Too many candidate keyrings!')
+        else:
+            # look in the signatures list
+            for sig in sigs:
+                if sig[:-4] not in files:
+                    keyring = sig
+                    break
+
+    if sigs and keyring is None:
+        error('Please specify the keyring using --keyring option.')
+
+    for path in files:
+        verify_file(path, sigs, keyring)
+
+def show_parsed_data(spec, opts):
+    print("Parsed these tags:")
+    print("-> Name:    {}".format(spec.name))
+    print("-> Epoch:   {}".format(spec.version))
+    print("-> Version: {}".format(spec.version))
+    print("-> Release: {}".format(spec.release))
+    print("-> Sources:\n  -> {}".format('\n  -> '.join(spec.sources)))
+    print("-> Patches:\n  -> {}".format('\n  -> '.join(spec.patches)))
+    print()
+
+def update_defines(defines):
+    if defines is None:
+        return
+
+    for define in defines:
+        macro, _, value = define.partition(' ')
+        if value is None:
+            error('Cannot parse definition {!r}'.format(define))
+        DEFINES[macro] = value
+
+def main():
+    opts = parseopts()
+    update_defines(opts.defines)
+    check_rpmspec()
+    spec = Spec(opts.spec)
+
+    if opts.debug:
+        show_parsed_data(spec, opts)
+
+    selected = Selections(spec, opts)
+    if opts.list_files or not (opts.get_files or opts.verify):
+        list_files(spec, opts, selected)
+    if opts.get_files:
+        download_files(spec, opts, selected)
+    if opts.verify or (opts.get_files and opts.verify is not False):
+        verify(spec, opts, selected)
+
+if __name__ == '__main__':
+    main()

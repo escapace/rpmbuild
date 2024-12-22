@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# @description update repository
+# @import console/info
+# @import lang/truth
+
+main () {
+    verbose true
+    strict true
+
+    if _ truth "$DOCKER"
+    then
+        local releasever="10"
+        local environment="stable"
+        local directory="${MANAGE_REPOSITORY}/repository/${environment}/linux/centos/${releasever}"
+        declare -A architectures
+
+        architectures["x86_64"]="${directory}/x86_64"
+        architectures["aarch64"]="${directory}/aarch64"
+
+        mkdir -p "${architectures["x86_64"]}" || true
+        mkdir -p "${architectures["aarch64"]}" || true
+
+        while read -d '' -r file
+        do
+            local basearch=
+            local target=
+            basearch="$(rpm --nosignature -q --qf '%{arch}' "${file}")"
+
+            if [[ "${basearch}" != "noarch" ]]
+            then
+                target="${directory}/${basearch}"
+                architectures["${basearch}"]="${target}"
+
+                mkdir -p "${target}" || true
+                cp -f "${file}" "${target}"
+            fi
+        done < <(find "/tmp/repository/RPMS" -regex '.*\.rpm' -type f -print0 2> /dev/null)
+
+        while read -d '' -r file
+        do
+            local basearch=
+            basearch="$(rpm --nosignature -q --qf '%{arch}' "${file}")"
+
+            if [[ "${basearch}" == "noarch" ]]
+            then
+                for key in "${!architectures[@]}"
+                do
+                    cp -f "${file}" "${architectures[$key]}"
+                done
+            fi
+        done < <(find "/tmp/repository/RPMS" -regex '.*\.rpm' -type f -print0 2> /dev/null)
+
+        for basearch in "${!architectures[@]}"
+        do
+            local target="${architectures[$basearch]}"
+            local repodata="${target}/repodata/repomd.xml"
+
+            if [[ -e "${repodata}" ]]
+            then
+                _ info "Updating ${basearch} repository"
+
+                createrepo --update "${target}"
+            else
+                _ info "Creating ${basearch} repository"
+
+                createrepo "${target}"
+            fi
+        done
+
+        sudo cp -rf "${MANAGE_REPOSITORY}/repository" "/tmp/repository"
+        sudo chown "${HOST_UID}:${HOST_GID}" -R "/tmp/repository/repository"
+    else
+        local scope="${DOCKER_SCOPE:-internal}"
+        local main="${scope}/rpmbuild"
+
+        docker run  \
+            --rm --privileged \
+            -v "${MANAGE_REPOSITORY}":/tmp/repository \
+            -e HOST_UID="$(id -u)" \
+            -e HOST_GID="$(id -g)" \
+            "${main}" update-repository
+    fi
+}
