@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+
+find_rpm_resources() {
+  local name="$1"
+  local spec_dir="$2"
+  local source_dir="$3"
+  local srpm_dir="$4"
+
+  # check for the spec file in spec directory
+  local spec_file="${spec_dir}/${name}.spec"
+  if [[ -f "$spec_file" ]]; then
+    local source_subdir="${source_dir}/${name}"
+    if [[ -d "$source_subdir" ]]; then
+      echo "${spec_file}"
+
+      return 0
+    else
+      return 1
+    fi
+  fi
+
+  local srpm_file=""
+  for file in "$srpm_dir"/*.src.rpm; do
+    # Extract the base name and match using corrected regex
+    local base_name
+    base_name=$(basename "$file")
+    local pattern="^${name}(-.*)?\.src\.rpm$"
+    if [[ "$base_name" =~ ${pattern} ]]; then
+      srpm_file="$file"
+      break
+    fi
+  done
+
+  if [[ -n "$srpm_file" ]]; then
+    echo "${srpm_file}"
+    return 0
+  fi
+
+  return 1
+}
