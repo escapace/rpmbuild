@@ -11,6 +11,7 @@ Source1:        LICENSE
 
 Provides:       kitty-terminfo = %{version}-%{release}
 Provides:       kitty-terminfo
+Requires:       ncurses-base
 
 %description
 Cross-platform, fast, feature full, GPU based terminal emulator.
