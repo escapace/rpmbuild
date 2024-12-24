@@ -1,20 +1,18 @@
 version: 2
+
 updates:
-- package-ecosystem: "docker"
-  directory: "/"
-  schedule:
-    interval: weekly
-    day: saturday
-    time: '07:00'
-    timezone: GMT
-  open-pull-requests-limit: 10
-  commit-message:
-    prefix: fix
-    include: scope
-- package-ecosystem: "github-actions"
-  directory: "/"
-  schedule:
-    interval: weekly
-    day: saturday
-    time: '07:00'
-    timezone: GMT
+  - directory: '/'
+    groups:
+      actions:
+        update-types:
+          - 'minor'
+          - 'patch'
+    labels:
+      - 'dependencies'
+      - 'github-actions'
+    package-ecosystem: 'github-actions'
+    schedule:
+      day: saturday
+      interval: weekly
+      time: '07:00'
+      timezone: Etc/UTC
