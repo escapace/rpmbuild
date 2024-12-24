@@ -78,9 +78,6 @@
 %ifnarch %{ix86} x86_64 %{arm} aarch64
 %global have_spice 0
 %endif
-%if 0%{?rhel} >= 9
-%global have_spice 0
-%endif
 
 # Matches xen ExclusiveArch
 %global have_xen 0
@@ -97,7 +94,7 @@
 %endif
 %endif
 
-%global have_virgl 0
+%global have_virgl 1
 %if 0%{?fedora}
 %global have_virgl 1
 %endif

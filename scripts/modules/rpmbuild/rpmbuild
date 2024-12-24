@@ -104,6 +104,14 @@ rpmbuild() {
       fi
     fi
 
+    if [[ "${name}" == "spice" ]]; then
+      /usr/bin/mock --enable-network --isolation=simple --no-bootstrap-image -r "${configuration}" \
+        --no-clean \
+        --no-cleanup-after \
+        --install "/tmp/repository/RPMS/libcacard-2.8.1-8.el10.$(uname -m).rpm" \
+        --install "/tmp/repository/RPMS/libcacard-devel-2.8.1-8.el10.$(uname -m).rpm"
+    fi
+
     if [[ "${name}" == "knot-resolver" ]]; then
       /usr/bin/mock --enable-network --isolation=simple --no-bootstrap-image -r "${configuration}" \
         --no-clean \
@@ -117,7 +125,13 @@ rpmbuild() {
         --no-clean \
         --no-cleanup-after \
         --install "/tmp/repository/RPMS/libiscsi-devel-1.20.0-3.el10.$(uname -m).rpm" \
-        --install "/tmp/repository/RPMS/libiscsi-1.20.0-3.el10.$(uname -m).rpm"
+        --install "/tmp/repository/RPMS/libiscsi-1.20.0-3.el10.$(uname -m).rpm" \
+        --install "/tmp/repository/RPMS/libcacard-2.8.1-8.el10.$(uname -m).rpm" \
+        --install "/tmp/repository/RPMS/libcacard-devel-2.8.1-8.el10.$(uname -m).rpm" \
+        --install "/tmp/repository/RPMS/spice-server-0.15.1-4.el10.$(uname -m).rpm" \
+        --install "/tmp/repository/RPMS/spice-server-devel-0.15.1-4.el10.$(uname -m).rpm" \
+        --install "/tmp/repository/RPMS/virglrenderer-1.0.1-2.el10.$(uname -m).rpm" \
+        --install "/tmp/repository/RPMS/virglrenderer-devel-1.0.1-2.el10.$(uname -m).rpm"
     fi
 
     if [[ "${name}" == "git" ]]; then
