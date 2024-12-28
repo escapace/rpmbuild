@@ -131,7 +131,9 @@ rpmbuild() {
         --install "/tmp/repository/RPMS/spice-server-0.15.1-4.el10.$(uname -m).rpm" \
         --install "/tmp/repository/RPMS/spice-server-devel-0.15.1-4.el10.$(uname -m).rpm" \
         --install "/tmp/repository/RPMS/virglrenderer-1.0.1-2.el10.$(uname -m).rpm" \
-        --install "/tmp/repository/RPMS/virglrenderer-devel-1.0.1-2.el10.$(uname -m).rpm"
+        --install "/tmp/repository/RPMS/virglrenderer-devel-1.0.1-2.el10.$(uname -m).rpm" \
+        --install "https://www.rpmfind.net/linux/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libatomic-static-14.2.1-6.fc42.x86_64.rpm" \
+        --install "https://www.rpmfind.net/linux/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libatomic-14.2.1-6.fc42.x86_64.rpm"
     fi
 
     if [[ "${name}" == "git" ]]; then

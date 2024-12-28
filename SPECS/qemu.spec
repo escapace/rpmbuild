@@ -57,10 +57,6 @@
 %global tools_only 0
 
 %global user_static 1
-%if 0%{?rhel}
-# EPEL/RHEL do not have required -static builddeps
-%global user_static 0
-%endif
 
 %global have_kvm 0
 %if 0%{?kvm_package:1}
