@@ -10,6 +10,7 @@
 
 Name:           virtiofsd
 Version:        1.13.0
+Epoch:          20
 Release:        %autorelease
 Summary:        Virtio-fs vhost-user device daemon (Rust version)
 
@@ -35,11 +36,7 @@ BuildRequires:  rust-packaging >= 21
 %endif
 BuildRequires:  libcap-ng-devel
 BuildRequires:  libseccomp-devel
-%if 0%{?rhel}
-Requires:       qemu-kvm-common
-%else
 Requires:       qemu-common
-%endif
 Provides:       vhostuser-backend(fs)
 Conflicts:      qemu-virtiofsd
 %if 0%{?fedora} > 38
