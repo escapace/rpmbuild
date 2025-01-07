@@ -73,7 +73,7 @@ rpmbuild() {
 
     _ info "Starting mock with ${configuration} configuration."
 
-    sudo /usr/bin/mock --enable-network -r "${configuration}" --no-bootstrap-image --dnf --init --isolation=simple
+    /usr/bin/mock --enable-network -r "${configuration}" --no-bootstrap-image --dnf --init --isolation=simple
 
     _ info "Building SRPMs."
 
@@ -132,16 +132,16 @@ rpmbuild() {
         --install "/tmp/repository/RPMS/spice-server-devel-0.15.1-4.el10.$(uname -m).rpm" \
         --install "/tmp/repository/RPMS/virglrenderer-1.0.1-2.el10.$(uname -m).rpm" \
         --install "/tmp/repository/RPMS/virglrenderer-devel-1.0.1-2.el10.$(uname -m).rpm" \
-        --install "https://www.rpmfind.net/linux/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libatomic-static-14.2.1-6.fc42.x86_64.rpm" \
-        --install "https://www.rpmfind.net/linux/fedora/linux/development/rawhide/Everything/x86_64/os/Packages/l/libatomic-14.2.1-6.fc42.x86_64.rpm"
+        --install "https://www.rpmfind.net/linux/fedora/linux/development/rawhide/Everything/$(uname -m)/os/Packages/l/libatomic-static-14.2.1-6.fc42.$(uname -m).rpm" \
+        --install "https://www.rpmfind.net/linux/fedora/linux/development/rawhide/Everything/$(uname -m)/os/Packages/l/libatomic-14.2.1-6.fc42.$(uname -m).rpm"
     fi
 
     if [[ "${name}" == "git" ]]; then
       /usr/bin/mock --enable-network --isolation=simple --no-bootstrap-image -r "${configuration}" \
         --no-clean \
         --no-cleanup-after \
-        --install "/tmp/repository/RPMS/llhttp-devel-9.2.1-1.el10.$(uname -m).rpm" \
-        --install "/tmp/repository/RPMS/llhttp-9.2.1-1.el10.$(uname -m).rpm" \
+        --install "/tmp/repository/RPMS/llhttp-devel-9.2.1-4.el10.$(uname -m).rpm" \
+        --install "/tmp/repository/RPMS/llhttp-9.2.1-4.el10.$(uname -m).rpm" \
         --install "/tmp/repository/RPMS/highlight-4.12-1.el10.$(uname -m).rpm"
     fi
 

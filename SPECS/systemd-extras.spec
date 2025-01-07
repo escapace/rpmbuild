@@ -27,7 +27,7 @@
 Name:           systemd-extras
 Url:            https://systemd.io
 %if %{without inplace}
-Version:        256
+Version:        257
 Release:        1%{?commit:.git%{shortcommit}}%{?dist}
 %else
 # determine the build information from local checkout
