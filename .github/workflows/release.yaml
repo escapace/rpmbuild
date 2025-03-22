@@ -14,11 +14,11 @@ jobs:
     steps:
       - name: apparmor
         run: |
-          sysctl -w kernel.apparmor_restrict_unprivileged_unconfined=0
-          sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_unconfined=0
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           # https://github.com/actions/runner-images/issues/10015#issuecomment-2668163375
-          systemctl disable --now apparmor.service
-          aa-teardown || true
+          sudo systemctl disable --now apparmor.service
+          sudo aa-teardown || true
       - name: checkout
         uses: actions/checkout@v4
         with:
