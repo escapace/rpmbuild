@@ -77,32 +77,32 @@ rpmbuild() {
 
     _ info "Building SRPMs."
 
-    if [[ "${name}" =~ ^python ]]; then
-      local rpm_globs=(
-        "/tmp/repository/RPMS/llhttp*.$(uname -m).rpm"
-        "/tmp/repository/RPMS/python*.noarch.rpm"
-        "/tmp/repository/RPMS/python*.$(uname -m).rpm"
-      )
-
-      # Array to hold resolved RPM files
-      rpm_files=()
-
-      # Resolve the globs and add matching files to the array
-      for glob in "${rpm_globs[@]}"; do
-        for glob_file in $glob; do
-          if [[ -f "$glob_file" ]]; then
-            rpm_files+=("--install" "$glob_file")
-          fi
-        done
-      done
-
-      if [[ ${#rpm_files[@]} -gt 0 ]]; then
-        /usr/bin/mock --enable-network --isolation=simple --no-bootstrap-image -r "${configuration}" \
-          --no-clean \
-          --no-cleanup-after \
-          "${rpm_files[@]}"
-      fi
-    fi
+    # if [[ "${name}" =~ ^python ]]; then
+    #   local rpm_globs=(
+    #     "/tmp/repository/RPMS/llhttp*.$(uname -m).rpm"
+    #     "/tmp/repository/RPMS/python*.noarch.rpm"
+    #     "/tmp/repository/RPMS/python*.$(uname -m).rpm"
+    #   )
+    #
+    #   # Array to hold resolved RPM files
+    #   rpm_files=()
+    #
+    #   # Resolve the globs and add matching files to the array
+    #   for glob in "${rpm_globs[@]}"; do
+    #     for glob_file in $glob; do
+    #       if [[ -f "$glob_file" ]]; then
+    #         rpm_files+=("--install" "$glob_file")
+    #       fi
+    #     done
+    #   done
+    #
+    #   if [[ ${#rpm_files[@]} -gt 0 ]]; then
+    #     /usr/bin/mock --enable-network --isolation=simple --no-bootstrap-image -r "${configuration}" \
+    #       --no-clean \
+    #       --no-cleanup-after \
+    #       "${rpm_files[@]}"
+    #   fi
+    # fi
 
     if [[ "${name}" == "spice" ]]; then
       /usr/bin/mock --enable-network --isolation=simple --no-bootstrap-image -r "${configuration}" \
@@ -136,14 +136,14 @@ rpmbuild() {
         --install "https://www.rpmfind.net/linux/fedora/linux/development/rawhide/Everything/$(uname -m)/os/Packages/l/libatomic-14.2.1-6.fc42.$(uname -m).rpm"
     fi
 
-    if [[ "${name}" == "git" ]]; then
-      /usr/bin/mock --enable-network --isolation=simple --no-bootstrap-image -r "${configuration}" \
-        --no-clean \
-        --no-cleanup-after \
-        --install "/tmp/repository/RPMS/llhttp-devel-9.2.1-4.el10.$(uname -m).rpm" \
-        --install "/tmp/repository/RPMS/llhttp-9.2.1-4.el10.$(uname -m).rpm" \
-        --install "/tmp/repository/RPMS/highlight-4.12-1.el10.$(uname -m).rpm"
-    fi
+    # if [[ "${name}" == "git" ]]; then
+    #   /usr/bin/mock --enable-network --isolation=simple --no-bootstrap-image -r "${configuration}" \
+    #     --no-clean \
+    #     --no-cleanup-after \
+    #     --install "/tmp/repository/RPMS/llhttp-devel-9.2.1-4.el10.$(uname -m).rpm" \
+    #     --install "/tmp/repository/RPMS/llhttp-9.2.1-4.el10.$(uname -m).rpm" \
+    #     --install "/tmp/repository/RPMS/highlight-4.12-1.el10.$(uname -m).rpm"
+    # fi
 
     if [[ "$file" == *.spec ]]; then
       /usr/bin/mock --enable-network --isolation=simple --no-bootstrap-image -r "${configuration}" \

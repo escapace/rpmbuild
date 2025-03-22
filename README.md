@@ -43,16 +43,16 @@ sudo systemctl restart systemd-binfmt.service
 ### Build order
 
 ```sh
-./manage build python-multidict
+# ./manage build python-multidict
 # ./manage build python-pytest-cov
-./manage build python-sphinxcontrib-apidoc
+# ./manage build python-sphinxcontrib-apidoc
 ./manage build python-pymongo
-./manage build python-zmq
+# ./manage build python-zmq
 # ./manage build python-eventlet
 # ./manage build python-gunicorn
-./manage build llhttp
-./manage build python-yarl
-./manage build python-aiohttp
+# ./manage build llhttp
+# ./manage build python-yarl
+# ./manage build python-aiohttp
 # ./manage build lua-basexx
 ./manage build lua-cqueues
 # ./manage build lua-http
@@ -61,6 +61,6 @@ sudo systemctl restart systemd-binfmt.service
 ./manage build lua-luaossl
 # ./manage build lua-lpeg-patterns
 # ./manage build lua-fifo
-./manage build highlight
-./manage build git
+# ./manage build highlight
+# ./manage build git
 ```
