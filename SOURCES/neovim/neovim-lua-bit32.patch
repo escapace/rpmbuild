@@ -1,0 +1,31 @@
+Index: neovim-0.11.0/src/nvim/ex_cmds.lua
+===================================================================
+--- neovim-0.11.0.orig/src/nvim/ex_cmds.lua	2025-03-26 18:02:38.217064177 +0100
++++ neovim-0.11.0/src/nvim/ex_cmds.lua	2025-03-26 18:02:41.424747978 +0100
+@@ -1,4 +1,4 @@
+-local bit = require 'bit'
++local bit = require 'bit32'
+ 
+ local M = {}
+ 
+Index: neovim-0.11.0/runtime/lua/vim/lsp/_watchfiles.lua
+===================================================================
+--- neovim-0.11.0.orig/runtime/lua/vim/lsp/_watchfiles.lua	2025-03-26 14:48:09.000000000 +0100
++++ neovim-0.11.0/runtime/lua/vim/lsp/_watchfiles.lua	2025-03-26 18:04:19.210556853 +0100
+@@ -1,4 +1,4 @@
+-local bit = require('bit')
++local bit = require('bit32')
+ local glob = vim.glob
+ local watch = vim._watch
+ local protocol = require('vim.lsp.protocol')
+Index: neovim-0.11.0/runtime/lua/vim/lsp/semantic_tokens.lua
+===================================================================
+--- neovim-0.11.0.orig/runtime/lua/vim/lsp/semantic_tokens.lua	2025-03-26 14:48:09.000000000 +0100
++++ neovim-0.11.0/runtime/lua/vim/lsp/semantic_tokens.lua	2025-03-26 18:04:28.696322064 +0100
+@@ -1,5 +1,5 @@
+ local api = vim.api
+-local bit = require('bit')
++local bit = require('bit32')
+ local ms = require('vim.lsp.protocol').Methods
+ local util = require('vim.lsp.util')
+ local uv = vim.uv
