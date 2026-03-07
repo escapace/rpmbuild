@@ -25,7 +25,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
       - name: setup qemu
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
       - name: docker buildx
         id: buildx
         uses: docker/setup-buildx-action@v3
