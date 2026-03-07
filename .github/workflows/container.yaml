@@ -35,7 +35,7 @@ jobs:
         id: container-metadata
         env:
           DOCKER_METADATA_ANNOTATIONS_LEVELS: index
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           flavor: |
             latest=false
