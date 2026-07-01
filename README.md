@@ -1,66 +1,63 @@
 # rpmbuild
 
-RPM package collection
+RPM package collection for CentOS Stream 10.
+
+The top-level `manage` command is a Python 3 script with no runtime Python dependencies.
+
+- `./manage build ...` and `./manage update-repository` run on the host and invoke Docker.
+- `manage container-build ...` and `manage container-update-repository` run inside the image.
+
+## Container image
 
 ```sh
+# Optional, for cross-architecture builds.
 # docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
 
-docker buildx create --driver docker-container
-docker buildx use NAME
+docker buildx create --driver docker-container --use
 
 docker buildx build \
---platform linux/amd64 \
---tag escapace/rpmbuild:amd64 \
---load .
+  --platform linux/amd64 \
+  --tag ghcr.io/escapace/rpmbuild:latest-amd64 \
+  --load .
 
 docker buildx build \
---platform linux/arm64 \
---tag escapace/rpmbuild:arm64 \
---load .
-
-docker run --rm -it \
-  --privileged --platform linux/amd64 \
-  -v $(pwd):/tmp/repository \
-  -e HOST_UID="$(id -u)" \
-  -e HOST_GID="$(id -g)" \
-  --entrypoint /bin/bash \
-  escapace/rpmbuild:amd64
-
-docker run --rm -it \
-  --privileged --platform linux/arm64 \
-  -v $(pwd):/tmp/repository \
-  -e HOST_UID="$(id -u)" \
-  -e HOST_GID="$(id -g)" \
-  --entrypoint /bin/bash \
-  escapace/rpmbuild:arm64
+  --platform linux/arm64 \
+  --tag ghcr.io/escapace/rpmbuild:latest-arm64 \
+  --load .
 ```
 
-If unable to sudo inside the container change the binfmt flag to `OCF` in
-`/usr/lib/binfmt.d/qemu-aarch64-static.conf`.
-
-sudo systemctl restart systemd-binfmt.service
-
-### Build order
+If sudo fails inside the arm64 container, change the binfmt flag to `OCF` in `/usr/lib/binfmt.d/qemu-aarch64-static.conf`, then run:
 
 ```sh
-# ./manage build python-multidict
-# ./manage build python-pytest-cov
-# ./manage build python-sphinxcontrib-apidoc
-./manage build python-pymongo
-# ./manage build python-zmq
-# ./manage build python-eventlet
-# ./manage build python-gunicorn
-# ./manage build llhttp
-# ./manage build python-yarl
-# ./manage build python-aiohttp
-# ./manage build lua-basexx
-./manage build lua-cqueues
-# ./manage build lua-http
-# ./manage build lua-binaryheap
-./manage build lua-bitop
-./manage build lua-luaossl
-# ./manage build lua-lpeg-patterns
-# ./manage build lua-fifo
-# ./manage build highlight
-# ./manage build git
+sudo systemctl restart systemd-binfmt.service
+```
+
+## Build packages
+
+Use `RPMBUILD_IMAGE` to select a local image, or let `manage` default to `ghcr.io/escapace/rpmbuild`.
+
+```sh
+RPMBUILD_IMAGE=ghcr.io/escapace/rpmbuild:latest-amd64 \
+  ./manage build --platform linux/amd64 python-pymongo
+
+RPMBUILD_IMAGE=ghcr.io/escapace/rpmbuild:latest-arm64 \
+  ./manage build --platform linux/arm64 lua-cqueues
+```
+
+## Update repository metadata
+
+```sh
+./manage update-repository
+```
+
+This builds a small inline CentOS Stream 10 image with `createrepo_c`, then runs `container-update-repository` and writes `repository/stable/linux/centos/10/...` in the mounted repository checkout.
+
+## Check for outdated RPMs
+
+On CentOS Stream 10, compare RPMs in `RPMS/` with the latest packages available from enabled CentOS and EPEL repositories. The output includes packages available at the same version as well as newer versions.
+
+```sh
+./manage outdated
+./manage outdated --arch aarch64
+./manage outdated --arch all --json
 ```

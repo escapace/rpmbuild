@@ -7,12 +7,13 @@ SOURCES/qemu/qemu-9.2.0.tar.xz
 *debugsource*
 *debuginfo*
 /repository
-.manage_modules
+.firecrawl/
+.venv/
+__pycache__/
 
 .DS_Store
 .awcache
 .idea
-.manage_modules
 .rpt2_cache
 .vscode
 

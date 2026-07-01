@@ -1,1056 +1,1254 @@
-#!/usr/bin/env bash
-#
-# This Source Code Form is subject to the terms of the Mozilla Public
-# License, v. 2.0. If a copy of the MPL was not distributed with this
-# file, You can obtain one at http://mozilla.org/MPL/2.0/.
-#
-# For more details on how to define your own commands
-# look online at https://github.com/escapace/manage
-#
-# shellcheck disable=SC1090,SC2016,SC2034,SC1117,SC2206
-# @dependency bc
-# @dependency cut
-# @dependency find
-# @dependency fold
-# @dependency grep
-# @dependency head
-# @dependency printf
-# @dependency rev
-# @dependency sed
-# @dependency seq
-# @dependency sort
-# @dependency tr
+#!/usr/bin/env python3
+"""Manage RPM builds and repository publishing for this repository."""
 
-if ((BASH_VERSINFO[0] == 4)) &&
-   ((BASH_VERSINFO[1] >= 2))
-then
-    true
-elif ((BASH_VERSINFO[0] >= 5))
-then
-    true
-else
-    echo "You need at least GNU bash, version 4.2" >&2
-    exit 1
-fi
+import argparse
+import dataclasses
+import json
+import os
+import platform as platform_module
+import re
+import shlex
+import shutil
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+from typing import Dict, List, Mapping, Optional, Sequence
 
-MANAGE_VERSION="v3.7.0"
+CONTAINER_REPOSITORY = Path("/tmp/repository")
+CONTAINER_ENVIRONMENT_VARIABLE = "CONTAINER"
+DEFAULT_IMAGE_SCOPE = "ghcr.io/escapace"
+DEFAULT_RELEASEVER = "10"
+DEFAULT_REPOSITORY_ENVIRONMENT = "stable"
+UPDATE_REPOSITORY_IMAGE = "rpmbuild-update-repository:centos-stream10"
+UPDATE_REPOSITORY_DOCKERFILE = """\
+FROM quay.io/centos/centos:stream10
+ENV CONTAINER=true
+RUN dnf clean all && \\
+  dnf install --assumeyes createrepo_c python3 rpm && \\
+  dnf clean all && \\
+  rm -rf /var/cache/yum/ /var/cache/dnf/
+ENTRYPOINT [\"/tmp/repository/manage\"]
+"""
+OUTDATED_DEFAULT_REPOSITORIES = (
+    "baseos",
+    "appstream",
+    "crb",
+    "extras-common",
+    "epel",
+)
+REPOQUERY_NAME_CHUNK_SIZE = 100
+RPM_QUERY_FORMAT = (
+    "%{NAME}\t%{EPOCHNUM}\t%{VERSION}\t%{RELEASE}\t%{ARCH}\t%{SOURCERPM}\n"
+)
+REPOQUERY_FORMAT = "%{name}\t%{epoch}\t%{version}\t%{release}\t%{arch}\t%{repoid}"
+RPM_COMPARE_EXPRESSION = (
+    '%{lua:print(rpm.vercmp(os.getenv("RPMCMP_A"), os.getenv("RPMCMP_B")))}'
+)
+MOCK_CONFIGURATIONS = {
+    "linux/amd64": "centos-stream+epel-10-x86_64",
+    "linux/arm64": "centos-stream+epel-10-aarch64",
+    "linux/arm64/v8": "centos-stream+epel-10-aarch64",
+}
+PACKAGE_INSTALL_REQUIREMENTS = {
+    "spice": (
+        "RPMS/libcacard-2.8.1-8.el10.{arch}.rpm",
+        "RPMS/libcacard-devel-2.8.1-8.el10.{arch}.rpm",
+    ),
+    "knot-resolver": (
+        "RPMS/jemalloc-5.3.0-6.el10.{arch}.rpm",
+        "RPMS/jemalloc-devel-5.3.0-6.el10.{arch}.rpm",
+    ),
+    "qemu": (
+        "RPMS/libiscsi-devel-1.20.0-3.el10.{arch}.rpm",
+        "RPMS/libiscsi-1.20.0-3.el10.{arch}.rpm",
+        "RPMS/libcacard-2.8.1-8.el10.{arch}.rpm",
+        "RPMS/libcacard-devel-2.8.1-8.el10.{arch}.rpm",
+        "RPMS/spice-server-0.15.1-4.el10.{arch}.rpm",
+        "RPMS/spice-server-devel-0.15.1-4.el10.{arch}.rpm",
+        "RPMS/virglrenderer-1.0.1-2.el10.{arch}.rpm",
+        "RPMS/virglrenderer-devel-1.0.1-2.el10.{arch}.rpm",
+        "https://www.rpmfind.net/linux/fedora/linux/development/rawhide/Everything/{arch}/os/Packages/l/libatomic-static-14.2.1-6.fc42.{arch}.rpm",
+        "https://www.rpmfind.net/linux/fedora/linux/development/rawhide/Everything/{arch}/os/Packages/l/libatomic-14.2.1-6.fc42.{arch}.rpm",
+    ),
+}
+ESCAPACE_GPG_KEY_ID = "D52633612B824195696B80D690A65F3603169487"
+GPG_KEYSERVERS = (
+    "hkp://keyserver.ubuntu.com:80",
+    "hkp://ipv4.pool.sks-keyservers.net",
+    "hkp://p80.pool.sks-keyservers.net:80",
+    "hkp://pgp.mit.edu:80",
+    "keyserver.ubuntu.com",
+    "ha.pool.sks-keyservers.net",
+    "pgp.mit.edu",
+    "hkps://keys.openpgp.org",
+)
+MOCK_BASE_COMMAND = (
+    "/usr/bin/mock",
+    "--enable-network",
+    "--isolation=simple",
+    "--no-bootstrap-image",
+)
+UV_RUN_CHECK = ("run", "--frozen", "--no-sync")
 
-MANAGE_IS_CI () {
-    # Returns 0 if the current environment
-    # is a Continuous Integration server.
 
-    local ci=(
-        "${CI}"                     # Travis CI, CircleCI, Gitlab CI, Appveyor, CodeShip
-        "${CONTINUOUS_INTEGRATION}" # Travis CI
-        "${BUILD_NUMBER}"           # Jenkins, TeamCity
+class ManageError(Exception):
+    """Raised when a manage command cannot complete."""
+
+
+@dataclasses.dataclass(frozen=True)
+class RpmPackage:
+    name: str
+    epoch: str
+    version: str
+    release: str
+    arch: str
+    sourcerpm: str
+    path: Path
+
+    @property
+    def evr(self) -> str:
+        return format_evr(self.epoch, self.version, self.release)
+
+
+@dataclasses.dataclass(frozen=True)
+class RepositoryPackage:
+    name: str
+    epoch: str
+    version: str
+    release: str
+    arch: str
+    repo: str
+
+    @property
+    def evr(self) -> str:
+        return format_evr(self.epoch, self.version, self.release)
+
+
+@dataclasses.dataclass(frozen=True)
+class OutdatedPackage:
+    local: RpmPackage
+    available: RepositoryPackage
+    comparison: int
+
+    @property
+    def status(self) -> str:
+        return "same" if self.comparison == 0 else "newer"
+
+
+def info(message: str) -> None:
+    print(message, flush=True)
+
+
+def warn(message: str) -> None:
+    print("warning: {0}".format(message), file=sys.stderr, flush=True)
+
+
+def fatal(message: str) -> ManageError:
+    return ManageError(message)
+
+
+def repository_dir() -> Path:
+    return Path(__file__).resolve().parent
+
+
+def command_name(command: Sequence[str]) -> str:
+    return shlex.join(command)
+
+
+def print_command(command: Sequence[str]) -> None:
+    info("$ {0}".format(command_name(command)))
+
+
+def command_path(name: str) -> Optional[str]:
+    found = shutil.which(name)
+    if found is not None:
+        return found
+    for directory in ("/usr/sbin", "/usr/bin", "/sbin", "/bin"):
+        candidate = Path(directory) / name
+        if candidate.is_file() and os.access(str(candidate), os.X_OK):
+            return str(candidate)
+    return None
+
+
+def require_command(name: str) -> str:
+    path = command_path(name)
+    if path is None:
+        raise fatal("missing required command: {0}".format(name))
+    return path
+
+
+def run_command(
+    command: Sequence[str],
+    cwd: Optional[Path] = None,
+    env: Optional[Mapping[str, str]] = None,
+    input_text: Optional[str] = None,
+    capture: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    print_command(command)
+    try:
+        completed = subprocess.run(
+            list(command),
+            cwd=str(cwd) if cwd else None,
+            env=dict(env) if env is not None else None,
+            input=input_text,
+            stdout=subprocess.PIPE if capture else None,
+            stderr=subprocess.PIPE if capture else None,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        raise fatal("unable to run {0}: {1}".format(command[0], exc))
+
+    if completed.returncode != 0:
+        if capture:
+            if completed.stdout:
+                print(
+                    completed.stdout,
+                    end="" if completed.stdout.endswith("\n") else "\n",
+                )
+            if completed.stderr:
+                print(
+                    completed.stderr,
+                    end="" if completed.stderr.endswith("\n") else "\n",
+                    file=sys.stderr,
+                )
+        raise fatal(
+            "command failed with exit code {0}: {1}".format(
+                completed.returncode, command_name(command)
+            )
+        )
+    return completed
+
+
+def run_command_ok(
+    command: Sequence[str],
+    cwd: Optional[Path] = None,
+    env: Optional[Mapping[str, str]] = None,
+    stdout: Optional[int] = None,
+    stderr: Optional[int] = None,
+) -> bool:
+    print_command(command)
+    try:
+        completed = subprocess.run(
+            list(command),
+            cwd=str(cwd) if cwd else None,
+            env=dict(env) if env is not None else None,
+            stdout=stdout,
+            stderr=stderr,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        warn("unable to run {0}: {1}".format(command[0], exc))
+        return False
+    return completed.returncode == 0
+
+
+def run_output(command: Sequence[str], cwd: Optional[Path] = None) -> str:
+    return run_command(command, cwd=cwd, capture=True).stdout.strip()
+
+
+def quiet_output(
+    command: Sequence[str], env: Optional[Mapping[str, str]] = None
+) -> str:
+    try:
+        completed = subprocess.run(
+            list(command),
+            env=dict(env) if env is not None else None,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        raise fatal("unable to run {0}: {1}".format(command[0], exc))
+    if completed.returncode != 0:
+        stderr = completed.stderr.strip()
+        detail = ": {0}".format(stderr) if stderr else ""
+        raise fatal(
+            "command failed with exit code {0}: {1}{2}".format(
+                completed.returncode, command_name(command), detail
+            )
+        )
+    return completed.stdout
+
+
+def quiet_completed(
+    command: Sequence[str], env: Optional[Mapping[str, str]] = None
+) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            list(command),
+            env=dict(env) if env is not None else None,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        raise fatal("unable to run {0}: {1}".format(command[0], exc))
+
+
+def format_evr(epoch: str, version: str, release: str) -> str:
+    normalized_epoch = epoch or "0"
+    return "{0}:{1}-{2}".format(normalized_epoch, version, release)
+
+
+def parse_os_release() -> Dict[str, str]:
+    for path in (Path("/etc/os-release"), Path("/usr/lib/os-release")):
+        if not path.is_file():
+            continue
+        data: Dict[str, str] = {}
+        for raw_line in path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            data[key] = value.strip().strip("'\"")
+        return data
+    return {}
+
+
+def require_centos_10() -> None:
+    data = parse_os_release()
+    if data.get("ID") == "centos" and data.get("VERSION_ID", "").startswith("10"):
+        return
+    if "el10" in data.get("PLATFORM_ID", ""):
+        return
+    raise fatal("outdated is supported only on CentOS Stream 10")
+
+
+def rpm_arch_from_platform() -> str:
+    machine = platform_module.machine().lower()
+    if machine in ("x86_64", "amd64"):
+        return "x86_64"
+    if machine in ("aarch64", "arm64"):
+        return "aarch64"
+    raise fatal("unsupported architecture: {0}".format(platform_module.machine()))
+
+
+def selected_outdated_arches(value: str) -> List[str]:
+    if value == "current":
+        return [rpm_arch_from_platform()]
+    if value == "all":
+        return ["x86_64", "aarch64"]
+    return [value]
+
+
+def rpm_query_file(path: Path) -> RpmPackage:
+    text = quiet_output(["rpm", "-qp", "--qf", RPM_QUERY_FORMAT, str(path)])
+    parts = text.rstrip("\n").split("\t")
+    if len(parts) != 6:
+        raise fatal("unexpected rpm query output for {0}: {1!r}".format(path, text))
+    name, epoch, version, release, arch, sourcerpm = parts
+    return RpmPackage(
+        name=name,
+        epoch=epoch or "0",
+        version=version,
+        release=release,
+        arch=arch,
+        sourcerpm=sourcerpm,
+        path=path,
     )
 
-    local code=0
-    local variable
 
-    for variable in "${ci[@]}"
-    do
-        [ -n "${variable// }" ] || code=$((code+1))
-    done
+def local_rpm_packages(rpm_dir: Path, arches: Sequence[str]) -> List[RpmPackage]:
+    if not rpm_dir.is_dir():
+        raise fatal("RPM directory not found: {0}".format(rpm_dir))
+    compatible_arches = set(arches) | {"noarch"}
+    packages = []
+    for path in sorted(rpm_dir.glob("*.rpm")):
+        package = rpm_query_file(path)
+        if package.arch in compatible_arches:
+            packages.append(package)
+    return packages
 
-    [[ ! "${#ci[@]}" == "${code}" ]]
-}
 
-MANAGE_IS_LOCAL () {
-    # shellcheck disable=1001
-    [[ "${1}" =~ ^[-_a-zA-Z0-9]+\/[-_a-zA-Z0-9]+$ ]] || return 1
-}
+def repoquery_base_command() -> List[str]:
+    repoquery = command_path("repoquery")
+    if repoquery is not None:
+        return [repoquery, "--quiet"]
+    dnf = command_path("dnf")
+    if dnf is not None:
+        return [dnf, "--quiet", "repoquery"]
+    dnf5 = command_path("dnf5")
+    if dnf5 is not None:
+        return [dnf5, "--quiet", "repoquery"]
+    raise fatal("missing required command: repoquery or dnf")
 
-if [ -z "${MANAGE_INTERACTIVE}" ] &&
-   [ -t 0 ] &&
-   [ -t 1 ] &&
-   ! MANAGE_IS_CI
-then
-    MANAGE_INTERACTIVE=true
-else
-    MANAGE_INTERACTIVE=false
-fi
 
-MANAGE_DELIMITER=$'[]'
+def enabled_repository_ids() -> List[str]:
+    dnf = command_path("dnf") or command_path("dnf5")
+    if dnf is None:
+        return []
+    completed = quiet_completed([dnf, "--quiet", "repolist", "--enabled"])
+    if completed.returncode != 0:
+        stderr = completed.stderr.strip()
+        detail = ": {0}".format(stderr) if stderr else ""
+        raise fatal("unable to list enabled repositories{0}".format(detail))
+    repositories = []
+    for line in completed.stdout.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("repo id"):
+            continue
+        repositories.append(stripped.split()[0])
+    return repositories
 
-MANAGE_COREUTILS=(sed sort)
 
-for executable in "${MANAGE_COREUTILS[@]}"
-do
-    eval "
-        ${executable} ()
-        {
-            if command -v \"g${executable}\" > /dev/null 2>&1
-            then
-                command \"g${executable}\" \"\$@\"
-            else
-                command \"${executable}\" \"\$@\"
-            fi
-        }
-    "
-done
+def selected_repositories(explicit: Sequence[str]) -> List[str]:
+    if explicit:
+        return list(dict.fromkeys(explicit))
+    enabled = set(enabled_repository_ids())
+    return [repo for repo in OUTDATED_DEFAULT_REPOSITORIES if repo in enabled]
 
-unset executable
 
-strict()
-{
-    # set/unset strict mode
-    #
-    # Usage: strict true/false
-    #
+def chunks(values: Sequence[str], size: int) -> Sequence[Sequence[str]]:
+    return [values[index : index + size] for index in range(0, len(values), size)]
 
-    local value
-    value="$(tr '[:upper:]' '[:lower:]' <<< "$1")"
-    case "${value}" in
-        no|n|false|f|off|0)
-            set   +o errexit
-            set   +o errtrace
-            set   +o pipefail
-            shopt -u nullglob
-            IFS=$' \n\t'
-            ;;
-        *)
-            set   -o errexit
-            set   -o errtrace
-            set   -o pipefail
-            shopt -s nullglob
-            IFS=$'\n\t'
-    esac
-}
 
-verbose ()
-{
-    #
-    # With no arguments, test if verbose mode is enabled.
-    # With one argument, set/unset verbose mode.
-    #
+def repoquery_command(
+    names: Sequence[str], arch: str, repositories: Sequence[str], refresh: bool
+) -> List[str]:
+    command = repoquery_base_command()
+    if refresh:
+        command.append("--refresh")
+    if repositories:
+        command.append("--disablerepo=*")
+        for repository in repositories:
+            command.append("--enablerepo={0}".format(repository))
+    command.extend(
+        [
+            "--forcearch={0}".format(arch),
+            "--available",
+            "--latest-limit=1",
+            "--arch",
+            "{0},noarch".format(arch),
+            "--queryformat",
+            REPOQUERY_FORMAT,
+            *names,
+        ]
+    )
+    return command
 
-    if (( $# == 0 )); then
-        [ -n "${MANAGE_VERBOSE}" ] && return "${MANAGE_VERBOSE}"
-        return 1
-    else
-        local value
-        value="$(tr '[:upper:]' '[:lower:]' <<< "$1")"
-        case "${value}" in
-            no|n|false|f|off|0)
-                MANAGE_VERBOSE=1
-                ;;
-            *)
-                MANAGE_VERBOSE=0
-        esac
-    fi
-}
 
-declare -A MANAGE_MODULE_NAMES
-declare -A MANAGE_MODULES
-declare -A MANAGE_REMOTES
-declare -A MANAGE_REMOTE_PATHS
-
-MANAGE_ERROR () {
-    local type="$1"; shift
-    local prefix=$'\033[1m\033[31mERROR\033[39m\033[0m'
-
-    MANAGE_SPINNER disable
-
-    case "${type}" in
-        shasum)
-            printf "%s No sha256sum, shasum or openssl in path\n" "${prefix}" "$@" >&2
-        ;;
-        notDefined)
-            printf "%s '%s' is not defined\n" "${prefix}" "$@" >&2
-        ;;
-        notRepository)
-            printf "%s '%s' is not a valid manage repository\n" "${prefix}" "$@" >&2
-        ;;
-        diffVersion)
-            printf "%s at least two different versions requested for the '%s' repository\n" "${prefix}" "$@" >&2
-        ;;
-        failDownload)
-            printf "%s failed to download repository '%s'\n" "${prefix}" "$@" >&2
-        ;;
-        invalidQuery)
-            printf "%s invalid option '%s' in query '%s'\n" "${prefix}" "$@" >&2
-        ;;
-        invalidVersion)
-            printf "%s version option in query '%s'\nmust match the pattern '%s'\n" "${prefix}" "$@" >&2
-        ;;
-        failImport)
-            printf "%s failed to import '%s'\n" "${prefix}" "$@" >&2
-        ;;
-        failVerify)
-            printf "%s failed to verify repository '%s' with tag '%s'\n" "${prefix}" "$@" >&2
-        ;;
-        collision)
-            printf "%s the same name is used by two different functions\n '%s' and '%s'\n" "${prefix}" "$@" >&2
-        ;;
-        arch)
-            printf "%s Unsupported architecture '%s'\n" "${prefix}" "$@" >&2
-        ;;
-        os)
-            printf "%s Unsupported os type '%s'\n" "${prefix}" "$@" >&2
-        ;;
-        yq)
-            printf "%s failed to download yq from '%s'\n" "${prefix}" "$@" >&2
-        ;;
-        *)
-            printf "%s uncaught exception\n" "${prefix}" >&2
-    esac
-
-    exit 1
-}
-
-MANAGE_BOOTSTRAP () {
-    local namespace
-
-    eval "$(
-        echo 'MANAGE_RUNTIME () (
-        strict true
-        '
-
-        echo "${MANAGE_NAMESPACE}"
-
-        echo '
-            local ___func="$1"
-            shift
-
-            if [[ "$(type -t "${___func}")" = "function" ]]
-            then
-                "${___func}" "$@"
-            else
-                return 1
-            fi
+def parse_repoquery_output(text: str) -> List[RepositoryPackage]:
+    packages = []
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        parts = line.split("\t")
+        if len(parts) != 6:
+            raise fatal("unexpected repoquery output line: {0!r}".format(line))
+        name, epoch, version, release, package_arch, repo = parts
+        packages.append(
+            RepositoryPackage(
+                name=name,
+                epoch=epoch or "0",
+                version=version,
+                release=release,
+                arch=package_arch,
+                repo=repo,
+            )
         )
-        '
-    )"
-}
+    return packages
 
-_ () {
-    if [[ -n "${1}" ]] &&
-       [[ -n "${MANAGE_MODULE_NAMES["${1}"]}" ]]
-    then
-        MANAGE_RUNTIME "$@"
-    else
-        MANAGE_ERROR notDefined "$1"
-    fi
-}
 
-MANAGE_GET_FUNCTION () (
-    cd "$(dirname "${1}")" || return 1
+def repoquery_packages(
+    names: Sequence[str], arch: str, repositories: Sequence[str], refresh: bool
+) -> List[RepositoryPackage]:
+    packages = []
+    for name_chunk in chunks(names, REPOQUERY_NAME_CHUNK_SIZE):
+        command = repoquery_command(name_chunk, arch, repositories, refresh)
+        packages.extend(parse_repoquery_output(quiet_output(command)))
+    return packages
 
-    source "${1}"
-    declare -f "${2}"
-)
 
-MANAGE_SPINNER_ENABLED=false
-MANAGE_SPINNER_STATE=0
-MANAGE_SPINNER_SYMBOLS=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
+def compare_rpm_versions(left: str, right: str) -> int:
+    if left == right:
+        return 0
+    if not left:
+        return -1
+    if not right:
+        return 1
+    env = os.environ.copy()
+    env["RPMCMP_A"] = left
+    env["RPMCMP_B"] = right
+    text = quiet_output(["rpm", "--eval", RPM_COMPARE_EXPRESSION], env=env).strip()
+    try:
+        value = int(text)
+    except ValueError as exc:
+        raise fatal("unexpected rpm comparison output: {0!r}".format(text)) from exc
+    if value < 0:
+        return -1
+    if value > 0:
+        return 1
+    return 0
 
-MANAGE_SHASUM () {
-    local string="$1"
-    local product
 
-    if command -v "sha256sum" > /dev/null 2>&1
-    then
-        product="$(echo -n "${string}" | sha256sum | awk '{print toupper($1)}')"
-    elif command -v "shasum" > /dev/null 2>&1
-    then
-        product="$(echo -n "${string}" | shasum -a 256 | awk '{print toupper($1)}')"
-    elif command -v "openssl" > /dev/null 2>&1
-    then
-        product="$(echo -n "${string}" | openssl dgst -sha256 | awk '{print toupper($2)}')"
-    else
-        MANAGE_ERROR shasum
-    fi
+def compare_evr(
+    left_epoch: str,
+    left_version: str,
+    left_release: str,
+    right_epoch: str,
+    right_version: str,
+    right_release: str,
+) -> int:
+    left_epoch_int = int(left_epoch or "0")
+    right_epoch_int = int(right_epoch or "0")
+    if left_epoch_int < right_epoch_int:
+        return -1
+    if left_epoch_int > right_epoch_int:
+        return 1
+    version_compare = compare_rpm_versions(left_version, right_version)
+    if version_compare:
+        return version_compare
+    return compare_rpm_versions(left_release, right_release)
 
-    echo "${product:0:32}"
-}
 
-MANAGE_SPINNER () {
-    local mode="$1"
-    local line
-    local symbol
+def best_repository_package(packages: Sequence[RepositoryPackage]) -> RepositoryPackage:
+    best = packages[0]
+    for package in packages[1:]:
+        if (
+            compare_evr(
+                package.epoch,
+                package.version,
+                package.release,
+                best.epoch,
+                best.version,
+                best.release,
+            )
+            > 0
+        ):
+            best = package
+    return best
 
-    case "${mode}" in
-        enable)
-            if [[ "${MANAGE_INTERACTIVE}" = "true" ]] &&
-               [[ "${MANAGE_SPINNER_ENABLED}" = "false" ]]
-            then
-                if command -v "tput" > /dev/null 2>&1
-                then
-                    tput civis
-                    trap 'tput cnorm' INT HUP TERM QUIT EXIT
-                fi
 
-                MANAGE_SPINNER_ENABLED=true
-            fi
-        ;;
-        disable)
-            if [[ "${MANAGE_SPINNER_ENABLED}" = "true" ]]
-            then
-                printf "\e[K\r"
-                command -v "tput" > /dev/null 2>&1 && tput cnorm
+def raise_keyboard_interrupt(signum: int, frame: object) -> None:
+    raise KeyboardInterrupt("received signal {0}".format(signum))
 
-                MANAGE_SPINNER_ENABLED=false
-            fi
-        ;;
-        *)
-            if [[ "${MANAGE_SPINNER_ENABLED}" = "true" ]]
-            then
-                if [[ "${#MANAGE_SPINNER_SYMBOLS[@]}" = "${MANAGE_SPINNER_STATE}" ]]
-                then
-                    MANAGE_SPINNER_STATE=0
-                else
-                    symbol="${MANAGE_SPINNER_SYMBOLS[${MANAGE_SPINNER_STATE}]}"
-                    MANAGE_SPINNER_STATE=$((MANAGE_SPINNER_STATE + 1))
 
-                    printf "%s \e[K%s\r" "${symbol}" "${mode}"
-                fi
-            fi
-    esac
-}
+def install_signal_handlers() -> None:
+    for name in ("SIGTERM", "SIGHUP"):
+        signum = getattr(signal, name, None)
+        if signum is not None:
+            signal.signal(signum, raise_keyboard_interrupt)
 
-MANAGE_SOURCE () {
-    local mode="$1"
-    local file="$2"
-    local script="$3"
-    local longName="${4:-${script}}"
-    local name
-    local cwd
 
-    name="$(basename "${script}")"
+def truth(value: Optional[str]) -> bool:
+    if value is None:
+        return False
+    return value.strip().lower() in ("1", "yes", "y", "true", "t", "on")
 
-    if [[ -z "${MANAGE_MODULE_NAMES["${name}"]}" ]]
-    then
-        MANAGE_MODULE_NAMES["${name}"]="${longName}"
-    # else
-    #     MANAGE_ERROR collision "${longName}" "${MANAGE_MODULE_NAMES["${name}"]}"
-    # fi
 
-    elif [[ "${MANAGE_MODULE_NAMES["${name}"]}" != "${longName}" ]]
-    then
-        MANAGE_ERROR collision "${longName}" "${MANAGE_MODULE_NAMES["${name}"]}"
-    fi
+def in_container() -> bool:
+    return truth(os.environ.get(CONTAINER_ENVIRONMENT_VARIABLE))
 
-    if [[ "${mode}" = "underscore" ]]
-    then
-        MANAGE_NAMESPACE+="$(MANAGE_GET_FUNCTION "${file}" "${name}")"$'\n' ||
-            MANAGE_ERROR failImport "${longName}"
-    elif [[ "${mode}" = "local" ]]
-    then
-        {
-            cwd="$(pwd)"
-            cd "$(dirname "${file}")"
-            source "${file}"
-            cd "${cwd}"
-        } || MANAGE_ERROR failImport "${longName}"
-    fi
-}
 
-MANAGE_GET () {
-    local repository="$1"
-    local version="$2"
-    local directory="$3"
-    local verify="${4:-true}"
+def require_container(command: str) -> None:
+    if not in_container():
+        raise fatal("{0} must run inside a manage container".format(command))
+    if not CONTAINER_REPOSITORY.is_dir():
+        raise fatal("{0} mount is missing".format(CONTAINER_REPOSITORY))
+    if command == "container-update-repository":
+        if repository_dir() != CONTAINER_REPOSITORY:
+            raise fatal(
+                "{0} must run from mounted repository {1}".format(
+                    command, CONTAINER_REPOSITORY
+                )
+            )
+        return
+    expected_repository = Path("/home/centos/rpmbuild")
+    if repository_dir() != expected_repository:
+        raise fatal(
+            "{0} must run from {1} inside the rpmbuild container".format(
+                command, expected_repository
+            )
+        )
+    if not Path("/etc/mock/site-defaults.cfg").is_file():
+        raise fatal("mock site defaults are missing; not running in the rpmbuild image")
 
-    local localVersion
 
-    local lsRemoteRegex="^[a-z0-9]{40}[\t ]+refs\/tags\/v([0-9]+)\.([0-9]+)\.([0-9]+)([0-9A-Za-z-])?"
-    local state=1
+def current_platform() -> str:
+    machine = platform_module.machine().lower()
+    if machine in ("x86_64", "amd64"):
+        return "linux/amd64"
+    if machine in ("aarch64", "arm64"):
+        return "linux/arm64"
+    raise fatal("unsupported architecture: {0}".format(platform_module.machine()))
 
-    if [[ -n "${MANAGE_REMOTES["${repository}"]}" ]]
-    then
-        [[ "${MANAGE_REMOTES["${repository}"]}" != "${version}" ]] && {
-            MANAGE_ERROR diffVersion "${repository}"
-        }
 
-        state=0
-    else
-        if [ -d "${directory}" ] &&
-           [ -f "${directory}/.manage.yml" ] &&
-           cd "${directory}" &&
-           [[ "$(git config remote.origin.url)" = "${repository}" ]] &&
-           localVersion="$(git describe --exact-match HEAD | head -n 1)"
-        then
-            if [[ "${verify}" = "false" ]]
-            then
-                state=0
-                MANAGE_REMOTES["${repository}"]="${version}"
-            else
-                cd "${directory}" &&
-                git tag -v "${localVersion}" &> /dev/null &&
-                state=0 &&
-                MANAGE_REMOTES["${repository}"]="${version}"
-            fi
+def mock_configuration_for_platform(platform: str) -> str:
+    configuration = MOCK_CONFIGURATIONS.get(platform)
+    if configuration is None:
+        raise fatal("unsupported platform: {0}".format(platform))
+    return configuration
 
-            if [[ "${version}" == "latest" ]] ||
-               [[ "${version}" == "${localVersion}" ]]
-            then
-                true
-            else
-                state=1
-            fi
-        fi
-    fi
 
-    if [[ "${state}" = 1 ]]
-    then
-        (
-            rm -rf "${directory}"
-            mkdir -p "${directory}"
-            cd "${directory}"
+def image_name(explicit: Optional[str]) -> str:
+    if explicit:
+        return explicit
+    configured = os.environ.get("RPMBUILD_IMAGE")
+    if configured:
+        return configured
+    scope = os.environ.get("DOCKER_SCOPE", DEFAULT_IMAGE_SCOPE).rstrip("/")
+    return "{0}/rpmbuild".format(scope)
 
-            git init -q "${directory}"
-            GIT_TERMINAL_PROMPT=0 git remote add origin "${repository}"
 
-            if [[ "${version}" = "latest" ]]
-            then
-                version="$(
-                    git ls-remote --refs -t -h -q |
-                    sed -r -n "/${lsRemoteRegex}/p" |
-                    LC_ALL=C sort -r -t '/' -k 3 -V |
-                    head -n 1 |
-                    cut -d '/' -f 3
-                )"
-            fi
+def maybe_relabel_for_container(repository: Path) -> None:
+    selinuxenabled = command_path("selinuxenabled")
+    sudo = command_path("sudo")
+    if selinuxenabled is None or sudo is None:
+        return
+    probe = subprocess.run(
+        [selinuxenabled],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if probe.returncode != 0:
+        return
+    run_command([sudo, "chcon", "-Rt", "svirt_sandbox_file_t", str(repository)])
 
-            {
-                GIT_TERMINAL_PROMPT=0 git fetch -q --depth=1 --recurse-submodules=yes origin tag "${version}"
-                GIT_TERMINAL_PROMPT=0 git checkout -q "${version}"
-                GIT_TERMINAL_PROMPT=0 git submodule --quiet update --depth 1 --init --recursive
-            } &> /dev/null
 
-            if [[ "${verify}" = "true" ]]
-            then
-                git tag -v "${version}" &> /dev/null || {
-                    rm -rf "${directory}"
-                    MANAGE_ERROR failVerify "${repository}" "${version}"
-                }
-            fi
-        ) || return 1
+def docker_environment() -> Dict[str, str]:
+    env = os.environ.copy()
+    if hasattr(os, "getuid"):
+        env["HOST_UID"] = str(os.getuid())
+    if hasattr(os, "getgid"):
+        env["HOST_GID"] = str(os.getgid())
+    return env
 
-        MANAGE_REMOTES["${repository}"]="${2}"
-    fi
-}
 
-MANAGE_GET_OR_DELETE () {
-    local repository="$1"
-    local version="$2"
-    local directory="$3"
-    local verify="${4:-true}"
+def docker_run_command(
+    image: str,
+    platform: Optional[str],
+    repository: Path,
+    inner_command: Sequence[str],
+) -> List[str]:
+    command = ["docker", "run"]
+    if platform:
+        command.extend(["--platform", platform])
+    command.extend(
+        [
+            "--rm",
+            "--privileged",
+            "-v",
+            "{0}:{1}".format(repository, CONTAINER_REPOSITORY),
+            "-e",
+            "HOST_UID",
+            "-e",
+            "HOST_GID",
+            "-e",
+            "CONTAINER=true",
+            image,
+            *inner_command,
+        ]
+    )
+    return command
 
-    local OPWD
 
-    OPWD="$(pwd)"
+def host_build(args: argparse.Namespace) -> int:
+    require_command("docker")
+    repository = repository_dir()
+    platform = args.platform or current_platform()
+    configuration = args.configuration or mock_configuration_for_platform(platform)
+    selected_image = image_name(args.image)
+    maybe_relabel_for_container(repository)
 
-    MANAGE_GET "${repository}" "${version}" "${directory}" "${verify}" || {
-        rm -rf "${directory}" || true
-        MANAGE_ERROR failDownload "${repository}"
+    ok = True
+    for name in args.name:
+        if (
+            find_rpm_resource(
+                name, repository / "SPECS", repository / "SOURCES", repository / "SRPMS"
+            )
+            is None
+        ):
+            warn("unable to find RPM resources for {0}".format(name))
+            ok = False
+            continue
+        info("processing {0} on {1}".format(name, platform))
+        command = docker_run_command(
+            selected_image,
+            platform,
+            repository,
+            ["container-build", "--configuration", configuration, name],
+        )
+        try:
+            run_command(command, env=docker_environment())
+        except ManageError as exc:
+            warn(str(exc))
+            ok = False
+    return 0 if ok else 1
+
+
+def find_rpm_resource(
+    name: str, specs: Path, sources: Path, srpms: Path
+) -> Optional[Path]:
+    spec = specs / "{0}.spec".format(name)
+    if spec.is_file() and (sources / name).is_dir():
+        return spec
+
+    pattern = re.compile(r"^{0}(-.*)?\.src\.rpm$".format(re.escape(name)))
+    if srpms.is_dir():
+        for path in sorted(srpms.glob("*.src.rpm")):
+            if pattern.match(path.name):
+                return path
+    return None
+
+
+def clean_container_workdir(workdir: Path) -> None:
+    for name in ("BUILD", "RPMS", "SPECS", "SRPMS", "SOURCES"):
+        path = workdir / name
+        if path.exists() or path.is_symlink():
+            if path.is_dir() and not path.is_symlink():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
+    for name in ("BUILD", "RPMS", "SPECS", "SRPMS"):
+        (workdir / name).mkdir(parents=True, exist_ok=True)
+
+
+def host_arch() -> str:
+    machine = platform_module.machine()
+    if machine in ("x86_64", "amd64"):
+        return "x86_64"
+    if machine in ("aarch64", "arm64"):
+        return "aarch64"
+    return machine
+
+
+def package_install_arguments(name: str, arch: str) -> List[str]:
+    arguments: List[str] = []
+    for template in PACKAGE_INSTALL_REQUIREMENTS.get(name, ()):
+        value = template.format(arch=arch)
+        if not value.startswith("http"):
+            value = str(CONTAINER_REPOSITORY / value)
+        arguments.extend(["--install", value])
+    return arguments
+
+
+def run_mock(configuration: str, args: Sequence[str]) -> None:
+    run_command([*MOCK_BASE_COMMAND, "-r", configuration, *args])
+
+
+def run_sudo(command: Sequence[str]) -> None:
+    if hasattr(os, "geteuid") and os.geteuid() == 0:
+        run_command(command)
+        return
+    sudo = require_command("sudo")
+    run_command([sudo, *command])
+
+
+def chown_for_current_user(path: Path) -> None:
+    run_sudo(["chown", "-R", "{0}:{1}".format(os.getuid(), os.getgid()), str(path)])
+
+
+def chown_for_host(path: Path) -> None:
+    host_uid = os.environ.get("HOST_UID")
+    host_gid = os.environ.get("HOST_GID")
+    if host_uid and host_gid:
+        run_sudo(["chown", "-R", "{0}:{1}".format(host_uid, host_gid), str(path)])
+
+
+def ensure_mount_directory(path: Path) -> None:
+    run_sudo(["install", "-d", "-m", "0775", str(path)])
+
+
+def sudo_copy_file(source: Path, destination: Path) -> None:
+    ensure_mount_directory(destination.parent)
+    run_sudo(["cp", "-f", str(source), str(destination)])
+
+
+def copy_build_results(workdir: Path) -> None:
+    output_rpms = CONTAINER_REPOSITORY / "RPMS"
+    output_srpms = CONTAINER_REPOSITORY / "SRPMS"
+    ensure_mount_directory(output_rpms)
+    ensure_mount_directory(output_srpms)
+
+    for rpm in sorted((workdir / "RPMS").rglob("*.rpm")):
+        if rpm.name.endswith(".src.rpm"):
+            continue
+        sudo_copy_file(rpm, output_rpms / rpm.name)
+    for srpm in sorted((workdir / "SRPMS").rglob("*.src.rpm")):
+        sudo_copy_file(srpm, output_srpms / srpm.name)
+
+    chown_for_host(output_rpms)
+    chown_for_host(output_srpms)
+
+
+def container_build(args: argparse.Namespace) -> int:
+    require_container("container-build")
+    name = args.name
+    configuration = args.configuration
+    workdir = repository_dir()
+    source_resource = find_rpm_resource(
+        name,
+        CONTAINER_REPOSITORY / "SPECS",
+        CONTAINER_REPOSITORY / "SOURCES",
+        CONTAINER_REPOSITORY / "SRPMS",
+    )
+    if source_resource is None:
+        raise fatal("unable to find RPM resources for {0}".format(name))
+
+    clean_container_workdir(workdir)
+    sources = workdir / "SOURCES"
+    specs = workdir / "SPECS"
+    srpms = workdir / "SRPMS"
+
+    if source_resource.suffix == ".spec":
+        shutil.copytree(CONTAINER_REPOSITORY / "SOURCES" / name, sources)
+        shutil.copy2(source_resource, specs / source_resource.name)
+    else:
+        shutil.copy2(source_resource, srpms / source_resource.name)
+
+    info("starting mock with {0} configuration".format(configuration))
+    run_mock(configuration, ["--dnf", "--init"])
+
+    install_arguments = package_install_arguments(name, host_arch())
+    if install_arguments:
+        run_mock(
+            configuration, ["--no-clean", "--no-cleanup-after", *install_arguments]
+        )
+
+    if source_resource.suffix == ".spec":
+        info("building SRPM for {0}".format(name))
+        run_mock(
+            configuration,
+            [
+                "--no-clean",
+                "--no-cleanup-after",
+                "--buildsrpm",
+                "--spec={0}".format(specs / source_resource.name),
+                "--sources={0}".format(sources),
+                "--resultdir={0}".format(srpms),
+            ],
+        )
+
+    srpm_files = sorted(str(path) for path in srpms.rglob("*.src.rpm"))
+    if not srpm_files:
+        raise fatal("no source RPM was produced for {0}".format(name))
+
+    info("building RPMs for {0}".format(name))
+    run_mock(
+        configuration,
+        [
+            "--no-clean",
+            "--no-cleanup-after",
+            "--rebuild",
+            *srpm_files,
+            "--resultdir={0}".format(workdir / "RPMS"),
+        ],
+    )
+    copy_build_results(workdir)
+    return 0
+
+
+def rpm_arch(path: Path) -> str:
+    return quiet_output(
+        ["rpm", "--nosignature", "-q", "--qf", "%{arch}", str(path)]
+    ).strip()
+
+
+def createrepo_command() -> str:
+    path = command_path("createrepo_c") or command_path("createrepo")
+    if path is None:
+        raise fatal("missing required command: createrepo_c or createrepo")
+    return path
+
+
+def container_update_repository(args: argparse.Namespace) -> int:
+    require_container("container-update-repository")
+    require_command("rpm")
+    createrepo = createrepo_command()
+
+    mounted_repository = CONTAINER_REPOSITORY / "repository"
+    ensure_mount_directory(mounted_repository)
+    chown_for_current_user(mounted_repository)
+
+    repository_root = (
+        mounted_repository / args.environment / "linux" / "centos" / args.releasever
+    )
+    architectures: Dict[str, Path] = {
+        "x86_64": repository_root / "x86_64",
+        "aarch64": repository_root / "aarch64",
     }
-
-    [[ "$(pwd)" = "${OPWD}" ]] || cd "${OPWD}"
-}
-
-MANAGE_REPOSITORY_PATH () {
-    local repository="$1"
-    local directory="$2"
-    local modulePath
-
-    if [[ -z "${MANAGE_REMOTE_PATHS["${repository}"]}" ]]
-    then
-        [ ! -f "${directory}/.manage.yml" ] && {
-            rm -rf "${directory}" || true
-            MANAGE_ERROR notRepository "${repository}"
-        }
-
-        modulePath="$(yq r "${directory}/.manage.yml" --defaultValue "scripts/modules" directories.module)"
-        modulePath="${directory}/${modulePath}"
-
-        [ ! -d "${modulePath}" ] && {
-            rm -rf "${directory}" || true
-            MANAGE_ERROR notRepository "${repository}"
-        }
-
-        MANAGE_REMOTE_PATHS["${repository}"]="${modulePath}"
-    fi
-}
-
-MANAGE_TAG ()
-{
-    local tag=${1}; shift
-    local trim='s/^[ \t]*//;s/[ \t]*$//'
-    local comment='^[ \t]*[#]+[ \t]*'
-    local import='[-_a-zA-Z0-9]+\/[-_a-zA-Z0-9]+|.*'
-    local dependency='[-_a-zA-Z0-9]+'
-
-    case "$tag" in
-        import)
-            text="$(sed -nr "s/${comment}@${tag} (${import})$/\1/p;${trim}" "$@")"
-
-            if [[ -n "${text}" ]]
-            then
-                declare -a lines
-                declare -a fragments
-                declare -A product
-                local fragment
-                local line
-
-                IFS=$'\n' read -rd '' -a lines <<< "${text}"
-
-                for line in "${lines[@]}"
-                do
-                    IFS=$' ' read -r -a fragments <<< "${line}"
-
-                    if MANAGE_IS_LOCAL "${fragments[0]}"
-                    then
-                        product["${line}"]=1
-                    else
-                        local repo="${fragments[0]}"
-                        local fragments=("${fragments[@]:1}")
-
-                        for fragment in "${fragments[@]}"
-                        do
-                            product["${repo}${MANAGE_DELIMITER}${fragment}"]=1
-                        done
-                    fi
-                done
-
-                if  [[ -n "${!product[*]}" ]]
-                then
-                    echo "${!product[*]}"
-                fi
-            fi
-        ;;
-        dependency)
-            sed -nr "s/${comment}@${tag} (${dependency})$/\1/p;${trim}" "$@"
-        ;;
-        *)
-            sed -nr "s/${comment}@${tag} (.+)$/\1/p;${trim}" "$@"
-    esac
-}
-
-MANAGE_QUERY () {
-    local mode="$1"; shift 1
-    local file
-    local list=()
-    local text
-
-    for file in "$@"
-    do
-        text="$(MANAGE_TAG import "${file}" | tr '\n' ' ' || true)"
-        IFS=$' ' read -ra list <<< "${text}"
-
-        if [[ "${file}" == "${MANAGE_DOWNLOAD_DIRECTORY}"/* ]]
-        then
-            MANAGE_RESOLVE_REMOTE "${mode}" "${list[@]}"
-        else
-            MANAGE_RESOLVE_LOCAL "${mode}" "${list[@]}"
-        fi
-    done
-}
-
-MANAGE_RESOLVE_REMOTE () {
-    local mode="$1"; shift 1
-    local arguments
-    local script
-    local file
-    local versionRegex='v([0-9]+)\.([0-9]+)\.([0-9]+)([\.0-9A-Za-z-]*)?'
-    local OPWD
-
-    OPWD="$(pwd)"
-
-    IFS=$'\n ' read -r -a arguments <<< "${@}"
-
-    declare -A managePaths
-    declare -A imports
-    declare -A scripts
-    declare -A remoteModules
-    declare -A manageModules
-
-    managePaths["${MANAGE_DIRECTORY}/modules"]="1"
-
-    for script in "${arguments[@]}"
-    do
-        if [[ -n "${script}" ]] &&
-           [[ -z "${scripts["${script}"]}" ]]
-        then
-            if MANAGE_IS_LOCAL "${script}"
-            then
-                [[ -z "${MANAGE_MODULES["${script}"]}" ]] && {
-                    scripts["${script}"]="${script}"
-                    MANAGE_SPINNER "${script}"
-                }
-            else
-                local prefix
-                local url
-                local left="${script%%${MANAGE_DELIMITER}*}"
-                local right="${script#*${MANAGE_DELIMITER}}"
-
-                if [[ $left = "https://"* ]]
-                then
-                    prefix="https://"
-                    url="${left#https:\/\/}"
-                elif [[ $left = "git://"* ]]
-                then
-                    prefix="git://"
-                    url="${left#git:\/\/}"
-                elif [[ $left = "ssh://"* ]]
-                then
-                    prefix="ssh://"
-                    url="${left#ssh:\/\/}"
-                else
-                    url="${left}"
-
-                    if [[ $left = "github.com/"* ]]
-                    then
-                        prefix="https://"
-                    else
-                        prefix=""
-                    fi
-                fi
-
-                local scriptPath="${right}"
-                local scriptName="${scriptPath%\?*}"
-                local repository
-                local directory
-
-                local version="${left##*\#}"
-
-                if [[ "${version}" == "${left}" ]]
-                then
-                    repository="${prefix}${url}"
-                    version=latest
-                else
-                    repository="${prefix}${url%%\#${version}}"
-                fi
-
-
-                if [[ "${version}" =~ ^${versionRegex}$ || "${version}" = "latest" ]]
-                then
-                    true
-                else
-                    MANAGE_ERROR invalidVersion "${repository}#${version}" "${versionRegex}"
-                fi
-
-                directory="${MANAGE_DOWNLOAD_DIRECTORY}/$(MANAGE_SHASUM "${repository}")"
-
-                if [[ -z "${MANAGE_MODULES["${script}"]}" ]]
-                then
-                    MANAGE_SPINNER "${repository} ${scriptPath}"
-
-                    MANAGE_GET_OR_DELETE "${repository}" "${version}" "${directory}"
-                    MANAGE_REPOSITORY_PATH "${repository}" "${directory}"
-
-                    scripts["${scriptName}"]="${script}"
-                fi
-            fi
-        fi
-    done
-
-    while read -d '' -r file
-    do
-        for script in "${!scripts[@]}"
-        do
-            if [[ "${file}" =~ ${script}$ ]] &&
-               [[ "$(head -n 1 "${file}")" =~ ^(#!){1}.*(bash){1}.* ]] &&
-               [[ "$(basename "${file}")" =~ ^[-_a-zA-Z0-9]*$ ]]
-            then
-                if [[ "${file}" == "${MANAGE_DOWNLOAD_DIRECTORY}/"* ]]
-                then
-                    remoteModules["${script}"]="${file}"
-                else
-                    manageModules["${script}"]="${file}"
-                fi
-            fi
-        done
-    done < <(find "${!managePaths[@]}" "${MANAGE_REMOTE_PATHS[@]}" -type f -print0 2> /dev/null)
-
-    for script in "${!manageModules[@]}"
-    do
-        local longName="${scripts["${script}"]}"
-
-        if ! MANAGE_IS_LOCAL "${longName}"
-        then
-            MANAGE_ERROR failImport "${longName}"
-        fi
-
-        file="${manageModules["${script}"]}"
-        imports["${file}"]=1
-
-        MANAGE_SOURCE "${mode}" "${file}" "${script}" "${longName}"
-        MANAGE_MODULES["${script}"]="${file}"
-    done
-
-    for script in "${!remoteModules[@]}"
-    do
-        file="${remoteModules["${script}"]}"
-        imports["${file}"]=1
-
-        MANAGE_SOURCE "${mode}" "${file}" "${script}" "${scripts["${script}"]}"
-        MANAGE_MODULES["${script}"]="${file}"
-    done
-
-    for script in "${!scripts[@]}"
-    do
-        [ -z "${MANAGE_MODULES["${script}"]}" ] && {
-            MANAGE_ERROR failImport "${script}"
-        }
-    done
-
-    if [ ! ${#imports[@]} -eq 0 ]
-    then
-        MANAGE_QUERY "${mode}" "${!imports[@]}"
-    fi
-
-    [[ "$(pwd)" = "${OPWD}" ]] || cd "${OPWD}"
-}
-
-MANAGE_RESOLVE_LOCAL () {
-    local mode="$1"; shift 1
-    local arguments
-    local script
-    local file
-
-    IFS=$'\n ' read -r -a arguments <<< "${@}"
-
-    declare -A localModules
-    declare -A manageModules
-    declare -A managePaths
-    declare -A imports
-    declare -A scripts
-
-    managePaths["${MANAGE_DIRECTORY}/modules"]="1"
-    [ -n "${MANAGE_MODULE_DIRECTORY}" ] && managePaths["${MANAGE_MODULE_DIRECTORY}"]="1"
-
-    for script in "${arguments[@]}"
-    do
-        [[ -n "${script}" ]] &&
-        [[ -z "${MANAGE_MODULES["${script}"]}" ]] && {
-            scripts["${script}"]=1
-            MANAGE_SPINNER "${script}"
-        }
-    done
-
-    while read -d '' -r file
-    do
-        for script in "${!scripts[@]}"
-        do
-            if [[ "${file}" =~ ${script}$ ]] &&
-               [[ "$(head -n 1 "${file}")" =~ ^(#!){1}.*(bash){1}.* ]] &&
-               [[ "$(basename "${file}")" =~ ^[-_a-zA-Z0-9]*$ ]]
-            then
-                if [[ "${file}" == "${MANAGE_DIRECTORY}/modules/"* ]]
-                then
-                    manageModules["${script}"]="${file}"
-                elif [[ -n "${MANAGE_MODULE_DIRECTORY}" ]] &&
-                     [[ "${MANAGE_MODULE_DIRECTORY}" != "${MANAGE_DIRECTORY}" ]] &&
-                     [[ "${file}" == "${MANAGE_MODULE_DIRECTORY}/"* ]]
-                then
-                    localModules["${script}"]="${file}"
-                fi
-            fi
-        done
-    done < <(find "${!managePaths[@]}" -type f -print0 2> /dev/null)
-
-    for script in "${!manageModules[@]}"
-    do
-        file="${manageModules["${script}"]}"
-        imports["${file}"]=1
-
-        MANAGE_SOURCE "${mode}" "${file}" "${script}"
-        MANAGE_MODULES["${script}"]="${file}"
-    done
-
-    for script in "${!localModules[@]}"
-    do
-        file="${localModules["${script}"]}"
-        imports["${file}"]=1
-
-        MANAGE_SOURCE "${mode}" "${file}" "${script}"
-        MANAGE_MODULES["${script}"]="${file}"
-    done
-
-    for script in "${!scripts[@]}"
-    do
-        if [ -z "${MANAGE_MODULES["${script}"]}" ]
-        then
-            if ! MANAGE_IS_LOCAL "${script}"
-            then
-                MANAGE_RESOLVE_REMOTE "${mode}" "${script}"
-            else
-                MANAGE_ERROR failImport "${script}"
-            fi
-        fi
-    done
-
-    if [ ! ${#imports[@]} -eq 0 ]
-    then
-        MANAGE_QUERY "${mode}" "${!imports[@]}"
-    fi
-}
-
-MANAGE_RESOLVE () {
-    local mode="$1"; shift 1
-    local arguments
-    local script
-
-    if [ -z "${MANAGE_REPOSITORY}" ] &&
-       [ -z "${MANAGE_DOWNLOAD_DIRECTORY}" ]
-    then
-        MANAGE_DOWNLOAD_DIRECTORY="${MANAGE_DIRECTORY}/.manage_modules"
-    else
-        MANAGE_DOWNLOAD_DIRECTORY="${MANAGE_REPOSITORY}/.manage_modules"
-    fi
-
-    IFS=$'\n ' read -r -a arguments <<< "${@}"
-
-    declare -A localModules
-    declare -A remoteModules
-
-    for script in "${arguments[@]}"
-    do
-        if [[ -n "${script}" ]]
-        then
-            if ! MANAGE_IS_LOCAL "${script}"
-            then
-                remoteModules["${script}"]=1
-            else
-                localModules["${script}"]=1
-            fi
-        fi
-    done
-
-    MANAGE_RESOLVE_LOCAL "${mode}" "${!localModules[@]}"
-    MANAGE_RESOLVE_REMOTE "${mode}" "${!remoteModules[@]}"
-}
-
-MANAGE_LOCAL () {
-    MANAGE_RESOLVE local "$@"
-}
-
-MANAGE_UNDERSCORE () {
-    MANAGE_RESOLVE underscore "$@"
-}
-
-MANAGE_ONCE () {
-    local __code=0
-    "$@" || __code="$?"
-    eval "$1"' () { return '"${__code}"'; }'
-    return "${__code}"
-}
-
-MANAGE_MAIN ()
-{
-    local _code
-
-    if declare -f "main" > /dev/null 2>&1
-    then
-        trap 'MANAGE_ONCE MANAGE_RETURN $?' INT HUP TERM QUIT EXIT
-        main "$@"
-        _code=$?
-        trap - INT HUP TERM QUIT EXIT ERR
-    fi
-
-    MANAGE_ONCE MANAGE_RETURN "${_code}"
-
-    return $?
-}
-
-MANAGE_RETURN ()
-{
-    local _code=${1:-0}
-    if declare -f "onExit" > /dev/null 2>&1
-    then
-        onExit "${_code}" || true
-    fi
-
-    return "${_code}"
-}
-
-MANAGE_ARCH () {
-    local arch
-
-    arch="$(uname -m)"
-
-    case "${arch}" in
-        # armv6*)
-        #     arch="arm"
-        #     ;;
-        x86_64)
-            arch="amd64"
-            ;;
-        x86)
-            arch="386"
-            ;;
-        i686)
-            arch="386"
-            ;;
-        i386)
-            arch="386"
-            ;;
-        aarch64)
-            arch="arm64"
-            ;;
-        armv7*)
-            arch="arm"
-            ;;
-        *)
-            MANAGE_ERROR arch "${arch}"
-    esac
-
-    echo ${arch}
-}
-
-MANAGE_OS () {
-    local ostype
-
-    ostype="$(uname)"
-
-    case "${ostype}" in
-        Linux)
-            ostype="linux"
-            ;;
-        Darwin)
-            ostype="darwin"
-            ;;
-        FreeBSD)
-            ostype="freebsd"
-            ;;
-        NetBSD)
-            ostype="netbsd"
-            ;;
-        *MINGW* | *WIN32* | *CYGWIN*)
-            ostype="windows"
-            ;;
-        *)
-            MANAGE_ERROR os "${ostype}"
-    esac
-
-    echo ${ostype}
-}
-
-MANAGE_GET_YQ() {
-    local version="3.2.1"
-    local url
-    local binary="${MANAGE_BIN}/yq"
-    local localVersion
-    local download="true"
-
-    url="https://github.com/mikefarah/yq/releases/download/${version}/yq_$(MANAGE_OS)_$(MANAGE_ARCH)"
-
-    if [[ -f "${binary}" ]]
-    then
-        localVersion="$("${binary}" --version 2>/dev/null)" || download=true
-        localVersion="${localVersion##"yq version "}"
-
-        if [[ "${localVersion}" == "${version}" ]]
-        then
-            download="false"
-        fi
-    fi
-
-    if [[ "${download}" == "true" ]]
-    then
-
-        {
-            if [[ "${MANAGE_INTERACTIVE}" == "true" ]]
-            then
-                curl -0 -S --progress-bar -L "${url}" -o "${MANAGE_BIN}/yq"
-            else
-                curl -0 -s -S -L "${url}" -o "${MANAGE_BIN}/yq"
-            fi
-        } || MANAGE_ERROR yq "${url}"
-
-        chmod +x "${MANAGE_BIN}/yq"
-
-        [[ "$("${MANAGE_BIN}/yq" --version)" == "yq version ${version}" ]] &> /dev/null || MANAGE_ERROR yq "${url}"
-    fi
-}
-
-yq () {
-    "${MANAGE_BIN}/yq" "$@"
-}
-
-
-if [[ "${BASH_SOURCE[0]}" != "${0}" ]]
-then
-    MANAGE_IMPORT_ARRAY=(${MANAGE_IMPORT})
-
-    strict true
-
-    if [ ! ${#MANAGE_IMPORT_ARRAY[@]} -eq 0 ]
-    then
-        MANAGE_SPINNER enable
-
-        MANAGE_UNDERSCORE "${MANAGE_IMPORT_ARRAY[@]}"
-        MANAGE_BOOTSTRAP
-
-        MANAGE_SPINNER disable
-    fi
-
-    [ -n "${MANAGE_SCRIPT_PATH}" ] &&
-    source "${MANAGE_SCRIPT_PATH}"
-    MANAGE_MAIN "$@"
-else
-    strict true
-
-    resolvelink() {
-        $(type -p greadlink readlink | head -1) "$1"
-    }
-
-    absolutedirectorypath() {
-        local cwd
-        local path="$1"
-
-        cwd="$(pwd)"
-
-        while [ -n "$path" ]; do
-            cd "${path%/*}" || exit
-            local name="${path##*/}"
-            path="$(resolvelink "$name" || true)"
-        done
-
-        pwd
-        cd "${cwd}" || exit
-    }
-
-    expandpath() {
-        { cd "$(dirname "$1")" 2>/dev/null
-            local dirname="$PWD"
-            cd "$OLDPWD"
-            echo "$dirname/$(basename "$1")"
-        } || echo "$1"
-    }
-
-    # shellcheck disable=SC2034
-
-    MANAGE_CWD="$(absolutedirectorypath .)"
-    MANAGE_ZERO="$(expandpath "$0")"
-    MANAGE_DIRECTORY="$(absolutedirectorypath "${MANAGE_ZERO}")"
-    LC_ALL=C
-
-    if [[ ! -f "${MANAGE_DIRECTORY}/.manage_modules/.manage-directory" ]]
-    then
-        MANAGE_DIRECTORY="${MANAGE_DIRECTORY}/.manage_modules/manage"
-
-        MANAGE_GET_OR_DELETE "https://github.com/escapace/manage.git" "${MANAGE_VERSION}" "${MANAGE_DIRECTORY}" false
-    fi
-
-    MANAGE_BIN="${MANAGE_DIRECTORY}/.manage_modules/bin"
-    [[ ! -d "${MANAGE_BIN}" ]] && mkdir -p "${MANAGE_BIN}"
-
-    MANAGE_GET_YQ
-
-    declare -A MANAGE_SCRIPTS
-
-    MANAGE_SPINNER enable
-
-    MANAGE_LOCAL \
-        manage/checkFileDependencies \
-        manage/collectScripts \
-        manage/help
-
-    MANAGE_SPINNER disable
-
-    checkFileDependencies "${MANAGE_ZERO}"
-    collectScripts "$@"
-fi
+    for directory in architectures.values():
+        if directory.exists():
+            shutil.rmtree(directory)
+        directory.mkdir(parents=True, exist_ok=True)
+
+    rpm_files = sorted((CONTAINER_REPOSITORY / "RPMS").glob("*.rpm"))
+    rpm_arches = {rpm_file: rpm_arch(rpm_file) for rpm_file in rpm_files}
+    for rpm_file, arch in rpm_arches.items():
+        if arch == "noarch":
+            continue
+        target = repository_root / arch
+        architectures[arch] = target
+        target.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(rpm_file, target / rpm_file.name)
+
+    for rpm_file, arch in rpm_arches.items():
+        if arch != "noarch":
+            continue
+        for target in architectures.values():
+            target.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(rpm_file, target / rpm_file.name)
+
+    for arch, target in sorted(architectures.items()):
+        repomd = target / "repodata" / "repomd.xml"
+        action = "updating" if repomd.exists() else "creating"
+        info("{0} {1} repository".format(action, arch))
+        command = [createrepo]
+        if repomd.exists():
+            command.append("--update")
+        command.append(str(target))
+        run_command(command)
+
+    chown_for_host(mounted_repository)
+    return 0
+
+
+def ensure_update_repository_image(image: str) -> None:
+    require_command("docker")
+    run_command(
+        ["docker", "build", "--tag", image, "-"],
+        input_text=UPDATE_REPOSITORY_DOCKERFILE,
+    )
+
+
+def docker_run_mounted_manage_command(
+    image: str,
+    platform: Optional[str],
+    repository: Path,
+    manage_arguments: Sequence[str],
+) -> List[str]:
+    command = ["docker", "run"]
+    if platform:
+        command.extend(["--platform", platform])
+    command.extend(
+        [
+            "--rm",
+            "--privileged",
+            "-v",
+            "{0}:{1}".format(repository, CONTAINER_REPOSITORY),
+            "-e",
+            "HOST_UID",
+            "-e",
+            "HOST_GID",
+            "-e",
+            "CONTAINER=true",
+            "--entrypoint",
+            "/usr/bin/python3",
+            image,
+            str(CONTAINER_REPOSITORY / "manage"),
+            *manage_arguments,
+        ]
+    )
+    return command
+
+
+def host_update_repository(args: argparse.Namespace) -> int:
+    require_command("docker")
+    repository = repository_dir()
+    selected_image = args.image or UPDATE_REPOSITORY_IMAGE
+    if args.image is None:
+        ensure_update_repository_image(selected_image)
+    platform = args.platform
+    command = docker_run_mounted_manage_command(
+        selected_image,
+        platform,
+        repository,
+        [
+            "container-update-repository",
+            "--releasever",
+            args.releasever,
+            "--environment",
+            args.environment,
+        ],
+    )
+    run_command(command, env=docker_environment())
+    return 0
+
+
+def trust_key(key_id: str) -> bool:
+    gpg = require_command("gpg")
+    for keyserver in GPG_KEYSERVERS:
+        for attempt in range(2):
+            if attempt:
+                time.sleep(1)
+            if run_command_ok(
+                [gpg, "--keyserver", keyserver, "--recv-keys", key_id],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            ):
+                run_command(
+                    [gpg, "--import-ownertrust"],
+                    input_text="{0}:5:\n".format(key_id),
+                    capture=True,
+                )
+                return True
+    return False
+
+
+def trust_escapace(args: argparse.Namespace) -> int:
+    if not trust_key(ESCAPACE_GPG_KEY_ID):
+        raise fatal("failed to import Escapace public key")
+    info("Escapace public key has been added to the local GPG keyring")
+    return 0
+
+
+def check(args: argparse.Namespace) -> int:
+    uv = require_command("uv")
+    repository = repository_dir()
+    commands = []
+
+    ruff_format = [uv, *UV_RUN_CHECK, "ruff", "format"]
+    if not args.fix:
+        ruff_format.append("--check")
+    ruff_format.append("manage")
+    commands.append(ruff_format)
+
+    ruff_check = [uv, *UV_RUN_CHECK, "ruff", "check"]
+    if args.fix:
+        ruff_check.append("--fix")
+    ruff_check.append("manage")
+    commands.append(ruff_check)
+    commands.append([uv, *UV_RUN_CHECK, "ty", "check", "manage"])
+
+    ok = True
+    for command in commands:
+        try:
+            run_command(command, cwd=repository)
+        except ManageError as exc:
+            warn(str(exc))
+            ok = False
+    return 0 if ok else 1
+
+
+def outdated(args: argparse.Namespace) -> int:
+    require_centos_10()
+    require_command("rpm")
+    arches = selected_outdated_arches(args.arch)
+    repositories = selected_repositories(args.repo)
+    if not args.repo and not repositories:
+        raise fatal(
+            "none of the default repositories are enabled; pass --repo explicitly"
+        )
+
+    rpm_dir = repository_dir() / "RPMS"
+    local_packages = local_rpm_packages(rpm_dir, arches)
+    names = sorted({package.name for package in local_packages})
+
+    available: Dict[str, List[RepositoryPackage]] = {}
+    for arch in arches:
+        for package in repoquery_packages(names, arch, repositories, args.refresh):
+            available.setdefault(package.name, []).append(package)
+
+    results = []
+    for local in local_packages:
+        compatible_arches = (
+            {"noarch"} if local.arch == "noarch" else {local.arch, "noarch"}
+        )
+        candidates = [
+            package
+            for package in available.get(local.name, [])
+            if package.arch in compatible_arches
+        ]
+        if not candidates:
+            continue
+        best = best_repository_package(candidates)
+        comparison = compare_evr(
+            local.epoch,
+            local.version,
+            local.release,
+            best.epoch,
+            best.version,
+            best.release,
+        )
+        if comparison <= 0:
+            results.append(
+                OutdatedPackage(local=local, available=best, comparison=comparison)
+            )
+
+    if args.json:
+        print(
+            json.dumps(
+                [
+                    {
+                        "name": result.local.name,
+                        "arch": result.local.arch,
+                        "local_evr": result.local.evr,
+                        "available_evr": result.available.evr,
+                        "available_arch": result.available.arch,
+                        "status": result.status,
+                        "repo": result.available.repo,
+                        "file": str(result.local.path.relative_to(repository_dir())),
+                        "sourcerpm": result.local.sourcerpm,
+                    }
+                    for result in results
+                ],
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+
+    if results:
+        print(
+            "name\tarch\tlocal_evr\tavailable_evr\tavailable_arch\tstatus\trepo\tfile"
+        )
+    for result in results:
+        print(
+            "{0}\t{1}\t{2}\t{3}\t{4}\t{5}\t{6}\t{7}".format(
+                result.local.name,
+                result.local.arch,
+                result.local.evr,
+                result.available.evr,
+                result.available.arch,
+                result.status,
+                result.available.repo,
+                result.local.path.relative_to(repository_dir()),
+            )
+        )
+    return 0
+
+
+def add_host_commands(subparsers: argparse._SubParsersAction) -> None:
+    build_parser = subparsers.add_parser(
+        "build",
+        help="build packages by running the rpmbuild container from the host",
+    )
+    build_parser.add_argument("name", nargs="+", help="RPM package name(s) to build")
+    build_parser.add_argument(
+        "--platform",
+        choices=tuple(MOCK_CONFIGURATIONS),
+        help="container platform; defaults to the current machine architecture",
+    )
+    build_parser.add_argument(
+        "--configuration",
+        help="mock configuration; defaults from --platform",
+    )
+    build_parser.add_argument(
+        "--image",
+        help="container image; defaults to RPMBUILD_IMAGE or DOCKER_SCOPE/rpmbuild",
+    )
+    build_parser.set_defaults(func=host_build)
+
+    update_parser = subparsers.add_parser(
+        "update-repository",
+        help="update repository metadata by running the rpmbuild container from the host",
+    )
+    update_parser.add_argument(
+        "--platform",
+        choices=tuple(MOCK_CONFIGURATIONS),
+        help="optional platform for the repository update container",
+    )
+    update_parser.add_argument(
+        "--image",
+        help="container image; defaults to an inline CentOS Stream 10 createrepo image",
+    )
+    update_parser.add_argument("--releasever", default=DEFAULT_RELEASEVER)
+    update_parser.add_argument("--environment", default=DEFAULT_REPOSITORY_ENVIRONMENT)
+    update_parser.set_defaults(func=host_update_repository)
+
+    outdated_parser = subparsers.add_parser(
+        "outdated",
+        help="list RPMS/ packages also available at the same or newer version",
+    )
+    outdated_parser.add_argument(
+        "--arch",
+        choices=("current", "x86_64", "aarch64", "all"),
+        default="current",
+        help="RPM architecture to check; defaults to current architecture plus noarch",
+    )
+    outdated_parser.add_argument(
+        "--repo",
+        action="append",
+        default=[],
+        help="repository id to query; can be repeated",
+    )
+    outdated_parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help="refresh repository metadata before querying",
+    )
+    outdated_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="emit JSON instead of tab-separated text",
+    )
+    outdated_parser.set_defaults(func=outdated)
+
+    check_parser = subparsers.add_parser(
+        "check",
+        help="run development checks with uv-managed tools",
+    )
+    check_parser.add_argument(
+        "--fix",
+        action="store_true",
+        help="format and apply safe fixes before non-mutating checks",
+    )
+    check_parser.set_defaults(func=check)
+
+
+def add_container_commands(subparsers: argparse._SubParsersAction) -> None:
+    container_build_parser = subparsers.add_parser(
+        "container-build",
+        help="build one package inside the rpmbuild container",
+    )
+    container_build_parser.add_argument("name", help="RPM package name to build")
+    container_build_parser.add_argument(
+        "--configuration",
+        required=True,
+        help="mock configuration to use inside the container",
+    )
+    container_build_parser.set_defaults(func=container_build)
+
+    container_update_parser = subparsers.add_parser(
+        "container-update-repository",
+        help="update repository metadata inside the rpmbuild container",
+    )
+    container_update_parser.add_argument("--releasever", default=DEFAULT_RELEASEVER)
+    container_update_parser.add_argument(
+        "--environment", default=DEFAULT_REPOSITORY_ENVIRONMENT
+    )
+    container_update_parser.set_defaults(func=container_update_repository)
+
+    trust_parser = subparsers.add_parser(
+        "trust-escapace",
+        help="import and owner-trust the Escapace public GPG key",
+    )
+    trust_parser.set_defaults(func=trust_escapace)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="manage")
+    subparsers = parser.add_subparsers(dest="command", title="commands")
+    if in_container():
+        add_container_commands(subparsers)
+    else:
+        add_host_commands(subparsers)
+    return parser
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if not hasattr(args, "func"):
+        parser.print_help()
+        return 0
+    try:
+        install_signal_handlers()
+        return args.func(args)
+    except KeyboardInterrupt as exc:
+        print("interrupted: {0}".format(exc), file=sys.stderr)
+        return 130
+    except ManageError as exc:
+        print("error: {0}".format(exc), file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

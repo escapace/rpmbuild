@@ -7,6 +7,9 @@ on:
       - "RPMS/**"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   release:
     concurrency: release
@@ -20,16 +23,11 @@ jobs:
           sudo systemctl disable --now apparmor.service
           sudo aa-teardown || true
       - name: checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
+          persist-credentials: false
           lfs: true
           submodules: true
-      - name: docker login
-        uses: docker/login-action@v3
-        with:
-          password: ${{ secrets.GITHUB_TOKEN }}
-          registry: ghcr.io
-          username: ${{ github.actor }}
       - name: install rpmsign
         run: sudo apt-get install -y rpm
       - name: configure gpg key
