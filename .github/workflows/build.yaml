@@ -1,0 +1,72 @@
+name: build
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Target package to build'
+        required: true
+        default: 'qemu'
+        type: choice
+        options:
+          - qemu
+          - neovim
+      architecture:
+        description: 'Target architecture'
+        required: true
+        default: 'amd64'
+        type: choice
+        options:
+          - amd64
+          - arm64
+
+permissions: {}
+
+jobs:
+  build:
+    name: build ${{ inputs.target }} on ${{ inputs.architecture }}
+    runs-on: ${{ inputs.architecture == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: build local rpmbuild image
+        run: |
+          docker build -t local/rpmbuild .
+
+      - name: build neovim
+        if: ${{ inputs.target == 'neovim' }}
+        env:
+          RPMBUILD_IMAGE: local/rpmbuild
+        run: |
+          ./manage build neovim
+
+      - name: download qemu source
+        if: ${{ inputs.target == 'qemu' }}
+        run: |
+          curl --proto '=https' --tlsv1.2 -fL -o SOURCES/qemu/qemu-10.2.2.tar.xz https://download.qemu.org/qemu-10.2.2.tar.xz
+
+      - name: build qemu and dependencies
+        if: ${{ inputs.target == 'qemu' }}
+        env:
+          RPMBUILD_IMAGE: local/rpmbuild
+        run: |
+          ./manage build spice-protocol
+          ./manage build libiscsi spice virglrenderer virtiofsd
+          ./manage build qemu
+
+      - name: collect changed packages
+        run: |
+          mkdir -p upload_artifacts
+          git ls-files -mo --exclude-standard | grep -E '^(RPMS|SRPMS)/' | while read -r file; do
+            mkdir -p "upload_artifacts/$(dirname "$file")"
+            cp "$file" "upload_artifacts/$file"
+          done
+
+      - name: upload changed packages
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: packages-${{ inputs.target }}-${{ inputs.architecture }}
+          path: upload_artifacts/
+          if-no-files-found: ignore

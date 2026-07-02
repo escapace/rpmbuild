@@ -178,6 +178,15 @@
 %global have_libcbor 0
 %endif
 
+# igvm is only available on Fedora x86_64 for now
+%global have_igvm 0
+
+# libiscsi block driver disabled on RHEL >= 10
+%global have_block_iscsi 1
+%if 0%{?rhel} >= 10
+%global have_block_iscsi 0
+%endif
+
 
 # LTO still has issues with qemu on armv7hl and aarch64
 # https://bugzilla.redhat.com/show_bug.cgi?id=1952483
@@ -202,7 +211,13 @@
 %define requires_block_gluster %{nil}
 %define obsoletes_block_gluster Obsoletes: %{name}-block-gluster < %{evr}
 %endif
+%if %{have_block_iscsi}
 %define requires_block_iscsi Requires: %{name}-block-iscsi = %{evr}
+%define obsoletes_block_iscsi %{nil}
+%else
+%define requires_block_iscsi %{nil}
+%define obsoletes_block_iscsi Obsoletes: %{name}-block-iscsi < %{evr}
+%endif
 %if %{have_block_nfs}
 %define requires_block_nfs Requires: %{name}-block-nfs = %{evr}
 %define obsoletes_block_nfs %{nil}
@@ -224,6 +239,8 @@
 %define requires_audio_pipewire Requires: %{name}-audio-pipewire = %{evr}
 %define requires_audio_sdl Requires: %{name}-audio-sdl = %{evr}
 %define requires_char_baum Requires: %{name}-char-baum = %{evr}
+%define requires_device_uefi_vars Requires: %{name}-device-uefi-vars = %{evr}
+%define requires_package_passt Requires: passt
 %define requires_device_usb_host Requires: %{name}-device-usb-host = %{evr}
 %define requires_device_usb_redirect Requires: %{name}-device-usb-redirect = %{evr}
 %define requires_ui_curses Requires: %{name}-ui-curses = %{evr}
@@ -343,15 +360,18 @@
 %{requires_device_display_virtio_vga} \
 %{requires_device_display_virtio_vga_gl} \
 %{requires_device_display_virtio_vga_rutabaga} \
+%{requires_device_uefi_vars} \
 %{requires_device_usb_host} \
 %{requires_device_usb_redirect} \
 %{requires_device_usb_smartcard} \
+%{requires_package_passt} \
 %{requires_package_qemu_pr_helper} \
 %{requires_package_virtiofsd} \
 
 # Modules which can be conditionally built
 %global obsoletes_some_modules \
 %{obsoletes_block_gluster} \
+%{obsoletes_block_iscsi} \
 %{obsoletes_block_rbd} \
 %{obsoletes_package_virtiofsd} \
 Obsoletes: %{name}-system-cris <= %{epoch}:%{version}-%{release} \
@@ -378,9 +398,12 @@ Obsoletes: sgabios-bin <= 1:0.20180715git-10.fc38
 
 Summary: QEMU is a FAST! processor emulator
 Name: qemu
-Version: 9.2.0
+Version: 10.2.2
 Release: %{baserelease}%{?rcrel}%{?dist}
 Epoch: 20
+
+# https://fedoraproject.org/wiki/Changes/DropQEMU32bitHostBuilds
+ExcludeArch: %{ix86} %{arm}
 License: %{shrink:
     Apache-2.0 AND
     BSD-2-Clause AND
@@ -406,13 +429,6 @@ Source0: %{dlurl}/%{name}-%{version}%{?rcstr}.tar.xz
 Source1: %{dlurl}/%{name}-%{version}%{?rcstr}.tar.xz.sig
 Source2: gpgkey-CEACC9E15534EBABB82D3FA03353C9CEF108B584.gpg
 
-# qemu 9.0.0 errors with:
-# RPM build errors:
-#     Missing build-id in /tmp/rpmbuild/BUILDROOT/qemu-9.0.0-1.rc2.fc41.x86_64/usr/share/qemu/hppa-firmware.img
-#     Missing build-id in /tmp/rpmbuild/BUILDROOT/qemu-9.0.0-1.rc2.fc41.x86_64/usr/share/qemu/hppa-firmware64.img
-#     Generating build-id links failed
-%global  _missing_build_ids_terminate_build    0
-
 Source10: qemu-guest-agent.service
 Source11: 99-qemu-guest-agent.rules
 Source12: bridge.conf
@@ -423,12 +439,19 @@ Source27: kvm.conf
 Source30: kvm-s390x.conf
 Source31: kvm-x86.conf
 Source36: README.tests
+Source37: qemu.sysusers
 
 # Skip failing test in copr
 # https://gitlab.com/qemu-project/qemu/-/issues/2541
 Patch: 0001-Disable-9p-local-tests-that-fail-on-copr-aarch64.patch
-# Fix compat with new glibc (not upstream yet)
-Patch: schedattr.patch
+# https://lists.nongnu.org/archive/html/qemu-block/2025-01/msg00480.html
+Patch: 0002-nfs-Add-support-for-libnfs-v2-api.patch
+Patch: 0008-Revert-meson.build-Disallow-libnfs-v6-to-fix-the-bro.patch
+# Increase test-replication timeout
+# NOT upstream, but see https://gitlab.com/qemu-project/qemu/-/issues/3035
+Patch: 0002-TEMPORARY-increase-test-timeout.patch
+# https://lists.nongnu.org/archive/html/qemu-devel/2026-01/msg01140.html
+Patch: 0001-meson-disable-libatomic-with-GCC-16.patch
 
 BuildRequires: gnupg2
 BuildRequires: meson >= %{meson_version}
@@ -441,7 +464,9 @@ BuildRequires: libselinux-devel
 BuildRequires: cyrus-sasl-devel
 BuildRequires: libaio-devel
 BuildRequires: python3-devel
+%if %{have_block_iscsi}
 BuildRequires: libiscsi-devel
+%endif
 BuildRequires: libattr-devel
 BuildRequires: libusbx-devel >= %{libusbx_version}
 %if %{have_usbredir}
@@ -612,8 +637,6 @@ BuildRequires: libcbor-devel
 BuildRequires: glibc-static
 BuildRequires: glib2-static
 BuildRequires: zlib-static
-# -latomic added by GLib 2.81.0, 2024-06-28
-BuildRequires: libatomic-static
 %endif
 
 
@@ -649,12 +672,6 @@ hardware for a full system such as a PC and its associated peripherals.
 
 %package common
 Summary: QEMU common files needed by all QEMU targets
-Requires(post): /usr/bin/getent
-Requires(post): /usr/sbin/groupadd
-Requires(post): /usr/sbin/useradd
-Requires(post): systemd-units
-Requires(preun): systemd-units
-Requires(postun): systemd-units
 %{obsoletes_some_modules}
 Requires: ipxe-roms-qemu >= %{ipxe_version}
 %description common
@@ -741,6 +758,7 @@ Install this package if you want to access remote disks over
 http, https, ftp and other transports provided by the CURL library.
 
 
+%if %{have_block_iscsi}
 %package  block-iscsi
 Summary: QEMU iSCSI block driver
 Requires: %{name}-common%{?_isa} = %{epoch}:%{version}-%{release}
@@ -748,6 +766,7 @@ Requires: %{name}-common%{?_isa} = %{epoch}:%{version}-%{release}
 This package provides the additional iSCSI block driver for QEMU.
 
 Install this package if you want to access iSCSI volumes.
+%endif
 
 
 %if %{have_block_rbd}
@@ -989,6 +1008,12 @@ Requires: %{name}-device-display-virtio-vga%{?_isa} = %{epoch}:%{version}-%{rele
 This package provides the virtio-vga-rutabaga display device for QEMU.
 %endif
 
+
+%package device-uefi-vars
+Summary: QEMU UEFI variable service
+Requires: %{name}-common%{?_isa} = %{epoch}:%{version}-%{release}
+%description device-uefi-vars
+This package provides the UEFI variable service for QEMU.
 
 %package device-usb-host
 Summary: QEMU usb host device
@@ -1547,6 +1572,8 @@ mkdir -p %{static_builddir}
   --disable-avx2                   \\\
   --disable-avx512bw               \\\
   --disable-blkio                  \\\
+  --disable-igvm                   \\\
+  --disable-passt                  \
   --disable-block-drv-whitelist-in-tools \\\
   --disable-bochs                  \\\
   --disable-bpf                    \\\
@@ -1752,6 +1779,7 @@ run_configure \
   --enable-capstone \
   --enable-coroutine-pool \
   --enable-curl \
+  --enable-passt \
 %if %{have_dbus_display}
   --enable-dbus-display \
 %endif
@@ -1764,6 +1792,9 @@ run_configure \
   --enable-gnutls \
   --enable-guest-agent \
   --enable-iconv \
+%if %{have_igvm}
+  --enable-igvm \
+%endif
 %if %{have_jack}
   --enable-jack \
 %endif
@@ -1772,7 +1803,9 @@ run_configure \
 %if %{have_libcbor}
   --enable-libcbor \
 %endif
+%if %{have_block_iscsi}
   --enable-libiscsi \
+%endif
 %if %{have_pmem}
   --enable-libpmem \
 %endif
@@ -1928,7 +1961,7 @@ pushd %{static_builddir}
 run_configure \
   --enable-attr \
   --enable-linux-user \
-%ifnarch %{power64}
+%ifnarch %{power64} s390x
   --enable-pie \
 %endif
   --enable-tcg \
@@ -1983,6 +2016,7 @@ popd
 %if !%{tools_only}
 # Install rules to use the bridge helper with libvirt's virbr0
 install -D -m 0644 %{_sourcedir}/bridge.conf %{buildroot}%{_sysconfdir}/%{name}/bridge.conf
+install -m0644 -D %{SOURCE37} %{buildroot}%{_sysusersdir}/qemu.conf
 
 # Install qemu-pr-helper service
 install -m 0644 contrib/systemd/qemu-pr-helper.service %{buildroot}%{_unitdir}
@@ -2188,12 +2222,7 @@ popd
 
 
 %if !%{tools_only}
-%post common
-getent group kvm >/dev/null || groupadd -g 36 -r kvm
-getent group qemu >/dev/null || groupadd -g 107 -r qemu
-getent passwd qemu >/dev/null || \
-useradd -r -u 107 -g qemu -G kvm -d / -s /sbin/nologin \
-  -c "qemu user" qemu
+%sysusers_create_compat %{SOURCE37}
 
 
 
@@ -2393,6 +2422,7 @@ useradd -r -u 107 -g qemu -G kvm -d / -s /sbin/nologin \
 # Fedora specific
 %{_datadir}/applications/qemu.desktop
 %exclude %{_datadir}/%{name}/qemu-nsis.bmp
+%{_sysusersdir}/qemu.conf
 
 
 %files tests
@@ -2405,8 +2435,10 @@ useradd -r -u 107 -g qemu -G kvm -d / -s /sbin/nologin \
 %endif
 %files block-curl
 %{_libdir}/%{name}/block-curl.so
+%if %{have_block_iscsi}
 %files block-iscsi
 %{_libdir}/%{name}/block-iscsi.so
+%endif
 %if %{have_block_rbd}
 %files block-rbd
 %{_libdir}/%{name}/block-rbd.so
@@ -2500,6 +2532,8 @@ useradd -r -u 107 -g qemu -G kvm -d / -s /sbin/nologin \
 %files device-display-virtio-vga-rutabaga
 %{_libdir}/%{name}/hw-display-virtio-vga-rutabaga.so
 %endif
+%files device-uefi-vars
+%{_libdir}/%{name}/hw-uefi-vars.so
 %files device-usb-host
 %{_libdir}/%{name}/hw-usb-host.so
 %files device-usb-redirect
@@ -3156,6 +3190,23 @@ useradd -r -u 107 -g qemu -G kvm -d / -s /sbin/nologin \
 
 
 %changelog
+* Wed Jul 02 2026 Local Build <local@build> - 20:10.2.2-1
+- Rebase to qemu 10.2.2 (from Fedora 44 fc44)
+- Drop schedattr.patch (fixed in glibc / no longer needed)
+- Add 0001-meson-disable-libatomic-with-GCC-16.patch
+- Add 0002-nfs-Add-support-for-libnfs-v2-api.patch
+- Add 0008-Revert-meson.build-Disallow-libnfs-v6-to-fix-the-bro.patch
+- Add 0002-TEMPORARY-increase-test-timeout.patch
+- Add qemu.sysusers; switch qemu-common to sysusers.d
+- Add qemu-device-uefi-vars subpackage
+- Add passt runtime dep via requires_package_passt
+- Drop libatomic-static BuildRequires (not needed on GCC 14 / GLib 2.80)
+- Add have_igvm=0 and have_block_iscsi=0 for RHEL>=10
+- Add ExcludeArch: %{ix86} %{arm}
+- Conditionalise libiscsi-devel BuildRequires on have_block_iscsi
+- Add --enable-passt; --disable-passt/--disable-igvm to disable_everything
+- Fix static --enable-pie: also exclude s390x
+
 * Thu Dec 12 2024 Daniel P. Berrangé <berrange@redhat.com> - 9.2.0-1
 - Rebase to qemu 9.2.0
 

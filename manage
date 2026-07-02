@@ -53,14 +53,16 @@ MOCK_CONFIGURATIONS = {
 }
 PACKAGE_INSTALL_REQUIREMENTS = {
     "qemu": (
-        "RPMS/libiscsi-devel-1.20.0-3.el10.{arch}.rpm",
-        "RPMS/libiscsi-1.20.0-3.el10.{arch}.rpm",
-        "RPMS/spice-server-0.15.1-4.el10.{arch}.rpm",
-        "RPMS/spice-server-devel-0.15.1-4.el10.{arch}.rpm",
-        "RPMS/virglrenderer-1.0.1-2.el10.{arch}.rpm",
-        "RPMS/virglrenderer-devel-1.0.1-2.el10.{arch}.rpm",
-        "https://www.rpmfind.net/linux/fedora/linux/development/rawhide/Everything/{arch}/os/Packages/l/libatomic-static-14.2.1-6.fc42.{arch}.rpm",
-        "https://www.rpmfind.net/linux/fedora/linux/development/rawhide/Everything/{arch}/os/Packages/l/libatomic-14.2.1-6.fc42.{arch}.rpm",
+        "RPMS/libiscsi-devel-1.20.3-1.el10.{arch}.rpm",
+        "RPMS/libiscsi-1.20.3-1.el10.{arch}.rpm",
+        "RPMS/spice-server-0.16.0-1.el10.{arch}.rpm",
+        "RPMS/spice-server-devel-0.16.0-1.el10.{arch}.rpm",
+        "RPMS/virglrenderer-1.3.0-1.el10.{arch}.rpm",
+        "RPMS/virglrenderer-devel-1.3.0-1.el10.{arch}.rpm",
+        "RPMS/spice-protocol-0.14.5-1.el10.noarch.rpm",
+    ),
+    "spice": (
+        "RPMS/spice-protocol-0.14.5-1.el10.noarch.rpm",
     ),
 }
 ESCAPACE_GPG_KEY_ID = "D52633612B824195696B80D690A65F3603169487"
