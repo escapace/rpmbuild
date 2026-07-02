@@ -10,6 +10,7 @@ on:
         options:
           - qemu
           - neovim
+          - knot-resolver
       architecture:
         description: 'Target architecture'
         required: true
@@ -41,6 +42,13 @@ jobs:
           RPMBUILD_IMAGE: local/rpmbuild
         run: |
           ./manage build neovim
+
+      - name: build knot-resolver
+        if: ${{ inputs.target == 'knot-resolver' }}
+        env:
+          RPMBUILD_IMAGE: local/rpmbuild
+        run: |
+          ./manage build knot-resolver
 
       - name: download qemu source
         if: ${{ inputs.target == 'qemu' }}

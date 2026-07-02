@@ -8,13 +8,13 @@
 %define NINJA ninja-build
 
 Name:           knot-resolver
-Version:        6.0.9
+Version:        6.4.0
 Release:        cznic.1%{?dist}
 Summary:        Caching full DNS Resolver
-
 License:        GPL-3.0-or-later
 URL:            https://www.knot-resolver.cz/
 Source0:        knot-resolver-%{version}.tar.xz
+
 %if 0%{GPG_CHECK}
 Source1:        knot-resolver-%{version}.tar.xz.asc
 # PGP keys used to sign upstream releases
@@ -26,10 +26,8 @@ BuildRequires:  gnupg2
 %endif
 
 Provides:       knot-resolver6 = %{version}-%{release}
-
-# alpha packaging compat, can be removed around 6.2
-Conflicts:      knot-resolver-core
-Conflicts:      knot-resolver-manager
+Provides:       user(knot-resolver)
+Provides:       group(knot-resolver)
 
 # LuaJIT only on these arches
 ExclusiveArch:	%{arm} aarch64 %{ix86} x86_64
@@ -49,6 +47,7 @@ BuildRequires:  pkgconfig(libuv)
 BuildRequires:  pkgconfig(luajit) >= 2.0
 BuildRequires:  jemalloc-devel
 BuildRequires:  python3-devel
+BuildRequires:  python3-setuptools
 
 Requires:       systemd
 Requires(post): systemd
@@ -58,30 +57,25 @@ Requires:       python3
 Requires:       python3-aiohttp
 Requires:       supervisor
 %if 0%{?suse_version}
+Requires:       python3-Jinja2
 Requires:       python3-PyYAML
 Requires:       python3-typing_extensions
 %else
+Requires:       python3-jinja2
 Requires:       python3-pyyaml
 Requires:       python3-typing-extensions
 %endif
 Recommends:     python3-prometheus_client
+Recommends:     python3-watchdog
 
 # dnstap module dependencies
-# SUSE is missing protoc-c protobuf compiler
+# SUSE is missing protoc protobuf compiler
 %if "x%{?suse_version}" == "x"
 BuildRequires:  pkgconfig(libfstrm)
 BuildRequires:  pkgconfig(libprotobuf-c)
 %endif
 
 # Distro-dependent dependencies
-%if 0%{?rhel} == 7
-BuildRequires:  lmdb-devel
-# Lua 5.1 version of the libraries have different package names
-Requires:       lua-basexx
-Requires:       lua-psl
-Requires:       lua-http
-Requires(pre):  shadow-utils
-%endif
 %if 0%{?fedora} || 0%{?rhel} > 7
 BuildRequires:  pkgconfig(lmdb)
 Requires:       lua5.1-basexx
@@ -99,7 +93,6 @@ BuildRequires:  openssl-devel
 %if 0%{?suse_version}
 %define NINJA ninja
 BuildRequires:  lmdb-devel
-BuildRequires:  python3-setuptools
 Requires(pre):  shadow
 %endif
 
@@ -203,8 +196,8 @@ rm %{buildroot}%{_libdir}/knot-resolver/kres_modules/http*.lua
 rm %{buildroot}%{_libdir}/knot-resolver/kres_modules/prometheus.lua
 %endif
 
-# rename doc directory for centos 7, opensuse
-%if 0%{?suse_version} || 0%{?rhel} == 7
+# rename doc directory for opensuse
+%if 0%{?suse_version}
 install -m 755 -d %{buildroot}/%{_pkgdocdir}
 mv %{buildroot}/%{_datadir}/doc/%{name}/* %{buildroot}/%{_pkgdocdir}/
 %endif
@@ -277,6 +270,7 @@ getent passwd knot-resolver >/dev/null || useradd -r -g knot-resolver -d %{_sysc
 %if "x%{?suse_version}" == "x"
 %{_libdir}/knot-resolver/kres_modules/experimental_dot_auth.lua
 %endif
+%{_libdir}/knot-resolver/kres_modules/fallback.lua
 %{_libdir}/knot-resolver/kres_modules/graphite.lua
 %{_libdir}/knot-resolver/kres_modules/policy.lua
 %{_libdir}/knot-resolver/kres_modules/predict.lua
@@ -295,6 +289,7 @@ getent passwd knot-resolver >/dev/null || useradd -r -g knot-resolver -d %{_sysc
 %{python3_sitearch}/knot_resolver*
 %{_mandir}/man8/kresd.8.gz
 %{_mandir}/man8/kresctl.8.gz
+%{_datadir}/bash-completion/completions/kresctl
 
 %files devel
 %{_includedir}/libkres
@@ -315,6 +310,6 @@ getent passwd knot-resolver >/dev/null || useradd -r -g knot-resolver -d %{_sysc
 %endif
 
 %changelog
-* Mon Nov 11 2024 Jakub Ružička <jakub.ruzicka@nic.cz> - 6.0.9-1
+* Wed Jun 17 2026 Knot Resolver team <knot-resolver@labs.nic.cz> - 6.4.0-1
 - upstream package
 - see NEWS or https://www.knot-resolver.cz/

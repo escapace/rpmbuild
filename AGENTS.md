@@ -70,3 +70,19 @@ Do not commit upstream source tarballs that exceed GitHub's 100MB file size limi
 When adopting a `.spec` file from Fedora to CentOS Stream 10:
 1. Ensure the `Release` tag strictly uses `1%{?dist}` so it natively resolves to `.el10` in the buildroot.
 2. Review all `%if 0%{?fedora}` conditional blocks. Important dependencies or features enabled only for modern Fedora versions will be silently dropped on CentOS unless the condition is explicitly expanded to include `|| 0%{?rhel} >= 10`.
+
+## GPG signature synchronization
+
+When updating an upstream source tarball to a new release (e.g. modifying `Version` in a `.spec`), you **must** also download the matching `.sig` or `.asc` signature file for that specific release. Reusing an old signature file, even if renamed, will cause `rpmbuild` to fail instantly in `%prep` with a `BAD signature` error. Since signature files are tiny, commit them directly to the repository alongside the `.spec`.
+
+## Strict RPM %changelog date formatting
+
+`rpmbuild` enforces strict day-of-week validation in `%changelog` blocks. If you manually add a changelog entry, you **must** use a command like `date -d "YYYY-MM-DD"` to verify the exact day of the week (e.g., `Thu` vs `Wed`). Hardcoding the wrong day for a given date will cause an immediate `bogus date in %changelog` build failure.
+
+## Auditing %files during major version bumps
+
+When adopting an older `.spec` for a major new software release, the upstream project frequently adds, renames, or drops firmware blobs, modules, or directories. Do **not** blindly run the build and react to `Installed (but unpackaged) file(s)` or `File not found` errors sequentially (which requires hours of slow rebuilds). Instead:
+
+1. Download the new upstream `.spec` file.
+2. Use `comm -13` and `comm -23` to mathematically diff the extracted `%files` block paths between your local spec and the upstream spec.
+3. Preemptively add or remove these exact paths from your local `%files` sections to align perfectly with upstream.
