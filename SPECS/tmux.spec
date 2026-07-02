@@ -1,19 +1,18 @@
-%global _hardened_build 1
-
 Name:           tmux
-Version:        3.5
+Version:        3.7b
 Release:        1%{?dist}
 Summary:        A terminal multiplexer
 
 License:        ISC AND BSD-2-Clause AND BSD-3-Clause AND SSH-short AND LicenseRef-Fedora-Public-Domain
 URL:            https://tmux.github.io/
 Source0:        https://github.com/tmux/%{name}/releases/download/%{version}/%{name}-%{version}.tar.gz
-# Examples has been removed - so include the bash_completion here
-Source1:        bash_completion_tmux.sh
+Source2:        tmux@.service
+Source3:        README.polkit
 
 BuildRequires:  byacc
 BuildRequires:  gcc
 BuildRequires:  systemd-devel
+BuildRequires:  systemd-rpm-macros
 BuildRequires:  libutempter-devel
 BuildRequires:  make
 BuildRequires:  pkgconfig(libevent_core) >= 2
@@ -24,6 +23,10 @@ BuildRequires:  pkgconfig(ncursesw)
 BuildRequires:  automake
 %endif
 
+Requires(post):   coreutils
+Requires(post):   grep
+Requires(postun): sed
+
 %description
 tmux is a "terminal multiplexer."  It enables a number of terminals (or
 windows) to be accessed and controlled from a single terminal.  tmux is
@@ -32,34 +35,38 @@ as GNU Screen.
 
 %prep
 %autosetup
+cp %{SOURCE3} .
 
 %build
-%configure --enable-systemd --enable-utempter
+%configure --enable-sixel --enable-systemd --enable-utempter
 %make_build
 
 
 %install
 %make_install
-# bash completion
-install -Dpm 644 %{SOURCE1} %{buildroot}%{_datadir}/bash-completion/completions/tmux
+# Install the systemd file
+install -Dpm 644 %{SOURCE2} %{buildroot}%{_unitdir}/tmux@.service
+
+%check
+%{buildroot}%{_bindir}/tmux -V
 
 %post
+# Add login shell entries to /etc/shells only when installing the package
+# for the first time:
 if [ "$1" = 1 ]; then
-  if [ ! -f %{_sysconfdir}/shells ] ; then
-    touch %{_sysconfdir}/shells
+  if [ ! -f %{_sysconfdir}/shells ]; then
+    echo "%{_bindir}/tmux" > %{_sysconfdir}/shells
+    echo "/bin/tmux" >> %{_sysconfdir}/shells
+  else
+    grep -q "^%{_bindir}/tmux$" %{_sysconfdir}/shells || echo "%{_bindir}/tmux" >> %{_sysconfdir}/shells
+    grep -q "^/bin/tmux$" %{_sysconfdir}/shells || echo "/bin/tmux" >> %{_sysconfdir}/shells
   fi
-  for binpath in %{_bindir} /bin; do
-    if ! grep -q "^${binpath}/tmux$" %{_sysconfdir}/shells; then
-       (cat %{_sysconfdir}/shells; echo "$binpath/tmux") > %{_sysconfdir}/shells.new
-       mv %{_sysconfdir}/shells{.new,}
-    fi
-  done
 fi
 
 %postun
-if [ "$1" = 0 ] && [ -f %{_sysconfdir}/shells ] ; then
-  sed -e '\!^%{_bindir}/tmux$!d' -e '\!^/bin/tmux$!d' < %{_sysconfdir}/shells > %{_sysconfdir}/shells.new
-  mv %{_sysconfdir}/shells{.new,}
+# Remove the login shell lines from /etc/shells only when uninstalling:
+if [ "$1" = 0 ] && [ -f %{_sysconfdir}/shells ]; then
+  sed -i -e '\!^%{_bindir}/tmux$!d' -e '\!^/bin/tmux$!d' %{_sysconfdir}/shells
 fi
 
 %files
@@ -67,9 +74,13 @@ fi
 %doc CHANGES README* example_tmux.conf
 %{_bindir}/tmux
 %{_mandir}/man1/tmux.1.*
-%{_datadir}/bash-completion/completions/tmux
+%{_unitdir}/tmux@.service
 
 %changelog
+* Thu Jul 02 2026 Nicholas Marriott <nicholas.marriott@gmail.com> - 3.7b-1
+- Update to 3.7b
+- Fix redraw after the end of a synchronized update
+
 * Sun Feb 18 2024 Filipe Rosset <rosset.filipe@gmail.com> - 3.4-1
 - Update to 3.4
 
