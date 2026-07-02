@@ -732,8 +732,7 @@ Requires: %{name} = %{epoch}:%{version}-%{release}
 The %{name}-tests rpm contains tests that can be used to verify
 the functionality of the installed %{name} package
 
-Install this package if you want access to the avocado_qemu
-tests, or qemu-iotests.
+Install this package if you want access to qemu-iotests.
 
 
 %if %{have_libblkio}
@@ -1569,11 +1568,9 @@ mkdir -p %{static_builddir}
   --disable-asan                   \\\
   --disable-attr                   \\\
   --disable-auth-pam               \\\
-  --disable-avx2                   \\\
-  --disable-avx512bw               \\\
   --disable-blkio                  \\\
   --disable-igvm                   \\\
-  --disable-passt                  \
+  --disable-passt                  \\\
   --disable-block-drv-whitelist-in-tools \\\
   --disable-bochs                  \\\
   --disable-bpf                    \\\
@@ -1767,10 +1764,6 @@ run_configure \
   --enable-af-xdp \
   --enable-alsa \
   --enable-attr \
-%ifarch %{ix86} x86_64
-  --enable-avx2 \
-  --enable-avx512bw \
-%endif
 %if %{have_libblkio}
   --enable-blkio \
 %endif
@@ -2059,14 +2052,10 @@ mkdir -p %{buildroot}%{_datadir}/%{name}/vhost-user
 # Create new directories and put them all under tests-src
 mkdir -p %{buildroot}%{testsdir}/python
 mkdir -p %{buildroot}%{testsdir}/tests
-mkdir -p %{buildroot}%{testsdir}/tests/avocado
 mkdir -p %{buildroot}%{testsdir}/tests/qemu-iotests
 mkdir -p %{buildroot}%{testsdir}/scripts/qmp
 
-# Install avocado_qemu tests
-cp -R %{qemu_kvm_build}/tests/avocado/* %{buildroot}%{testsdir}/tests/avocado/
-
-# Install qemu.py and qmp/ scripts required to run avocado_qemu tests
+# Install qemu.py and qmp/ scripts required to run tests
 cp -R %{qemu_kvm_build}/python/qemu %{buildroot}%{testsdir}/python
 cp -R %{qemu_kvm_build}/scripts/qmp/* %{buildroot}%{testsdir}/scripts/qmp
 install -p -m 0755 tests/Makefile.include %{buildroot}%{testsdir}/tests/
@@ -3190,7 +3179,7 @@ popd
 
 
 %changelog
-* Wed Jul 02 2026 Local Build <local@build> - 20:10.2.2-1
+* Thu Jul 02 2026 Local Build <local@build> - 20:10.2.2-1
 - Rebase to qemu 10.2.2 (from Fedora 44 fc44)
 - Drop schedattr.patch (fixed in glibc / no longer needed)
 - Add 0001-meson-disable-libatomic-with-GCC-16.patch

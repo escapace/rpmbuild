@@ -2,7 +2,7 @@ SRPMS/qemu-9.2.0-1.el10.src.rpm
 SRPMS/kata-containers-3.11.0-1.fc40.0.src.rpm
 !/SOURCES/**
 SOURCES/amazon-ec2-net-utils/*.tgz
-SOURCES/qemu/qemu-9.2.0.tar.xz
+SOURCES/qemu/*.tar.xz
 
 *debugsource*
 *debuginfo*
