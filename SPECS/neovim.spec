@@ -1,5 +1,5 @@
 ## START: Set by rpmautospec
-## (rpmautospec version 0.8.3)
+## (rpmautospec version 0.8.4)
 ## RPMAUTOSPEC: autorelease, autochangelog
 %define autorelease(e:s:pb:n) %{?-p:0.}%{lua:
     release_number = 1;
@@ -8,34 +8,29 @@
 }%{?-e:.%{-e*}}%{?-s:.%{-s*}}%{!?-n:%{?dist}}
 ## END: Set by rpmautospec
 
-%if 0%{?el8}
-# see https://fedoraproject.org/wiki/Changes/CMake_to_do_out-of-source_builds
-# EPEL 8's %%cmake defaults to in-source build, which neovim does not support
-%undefine __cmake_in_source_build
-%endif
 
 %bcond_with jemalloc
 %ifarch %{arm} %{ix86} x86_64 %{mips} s390x
   %bcond_without luajit
 %else
   %ifarch aarch64
-    %if 0%{?el8}
-      # luajit codepath buggy on el8 aarch64
-      # https://bugzilla.redhat.com/show_bug.cgi?id=2065340
-      %bcond_with luajit
-    %else
-      %bcond_without luajit
-    %endif
+    %bcond_without luajit
   %else
     %bcond_with luajit
   %endif
 %endif
 
+%if 0%{?el10}
+# tree-sitter in EL10 is too old and libtree-sitter-devel is not shipped
+# https://issues.redhat.com/browse/RHEL-56996
 %bcond system_treesitter 0
+%else
+%bcond system_treesitter 1
+%endif
 
 %global luv_min_ver 1.43.0
 %if %{with system_treesitter}
-%global tree_sitter_min_ver 0.22.5
+%global tree_sitter_min_ver 0.26.7
 %endif
 %global vterm_min_ver 0.3.3
 
@@ -49,7 +44,7 @@
 %endif
 
 Name:           neovim
-Version:        0.11.5
+Version:        0.12.3
 Release:        %autorelease
 
 License:        Apache-2.0 AND Vim AND MIT
@@ -99,6 +94,7 @@ BuildRequires:  pkgconfig(vterm) >= %{vterm_min_ver}
 # need the build with the fix for the resize buffer issue
 Requires:       libvterm >= %{vterm_min_ver}
 BuildRequires:  pkgconfig(unibilium)
+# libutf8proc not available in repos - use bundled utf8proc v2.11.3
 # BuildRequires:  pkgconfig(libutf8proc) >= 2.10.0
 %if %{with system_treesitter}
 BuildRequires:  pkgconfig(tree-sitter) >= %{tree_sitter_min_ver}
@@ -215,7 +211,6 @@ NVIM_LOG_FILE=/dev/null %{_bindir}/nvim -u NONE -es -c ":helptags %{_datadir}/nv
 
 %dir %{_datadir}/nvim/runtime/autoload
 %{_datadir}/nvim/runtime/autoload/README.txt
-%{_datadir}/nvim/runtime/autoload/*.lua
 %{_datadir}/nvim/runtime/autoload/*.vim
 
 %dir %{_datadir}/nvim/runtime/autoload/cargo
@@ -257,16 +252,9 @@ NVIM_LOG_FILE=/dev/null %{_bindir}/nvim -u NONE -es -c ":helptags %{_datadir}/nv
 %{_datadir}/nvim/runtime/ftplugin/README.txt
 
 %dir %{_datadir}/nvim/runtime/indent
-%{_datadir}/nvim/runtime/indent/Makefile
 %{_datadir}/nvim/runtime/indent/README.txt
 %{_datadir}/nvim/runtime/indent/*.lua
 %{_datadir}/nvim/runtime/indent/*.vim
-
-%dir %{_datadir}/nvim/runtime/indent/testdir/
-%{_datadir}/nvim/runtime/indent/testdir/README.txt
-%{_datadir}/nvim/runtime/indent/testdir/*.in
-%{_datadir}/nvim/runtime/indent/testdir/*.ok
-%{_datadir}/nvim/runtime/indent/testdir/*.vim
 
 %dir %{_datadir}/nvim/runtime/keymap
 %{_datadir}/nvim/runtime/keymap/*.vim
@@ -278,8 +266,16 @@ NVIM_LOG_FILE=/dev/null %{_bindir}/nvim -u NONE -es -c ":helptags %{_datadir}/nv
 %dir %{_datadir}/nvim/runtime/lua/nvim
 %{_datadir}/nvim/runtime/lua/nvim/*.lua
 
+%dir %{_datadir}/nvim/runtime/lua/uv
+%{_datadir}/nvim/runtime/lua/uv/_meta.lua
+
 %dir %{_datadir}/nvim/runtime/lua/vim
 %{_datadir}/nvim/runtime/lua/vim/*.lua
+
+%dir %{_datadir}/nvim/runtime/lua/vim/_core
+%{_datadir}/nvim/runtime/lua/vim/_core/*.lua
+%dir %{_datadir}/nvim/runtime/lua/vim/_core/ui2
+%{_datadir}/nvim/runtime/lua/vim/_core/ui2/*.lua
 
 %dir %{_datadir}/nvim/runtime/lua/vim/_ftplugin
 %{_datadir}/nvim/runtime/lua/vim/_ftplugin/*.lua
@@ -305,6 +301,12 @@ NVIM_LOG_FILE=/dev/null %{_bindir}/nvim -u NONE -es -c ":helptags %{_datadir}/nv
 %dir %{_datadir}/nvim/runtime/lua/vim/lsp/_meta
 %{_datadir}/nvim/runtime/lua/vim/lsp/_meta/*.lua
 
+%dir %{_datadir}/nvim/runtime/lua/vim/net
+%{_datadir}/nvim/runtime/lua/vim/net/*.lua
+
+%dir %{_datadir}/nvim/runtime/lua/vim/pack
+%{_datadir}/nvim/runtime/lua/vim/pack/*.lua
+
 %dir %{_datadir}/nvim/runtime/lua/vim/provider
 %{_datadir}/nvim/runtime/lua/vim/provider/*.lua
 
@@ -324,7 +326,7 @@ NVIM_LOG_FILE=/dev/null %{_bindir}/nvim -u NONE -es -c ":helptags %{_datadir}/nv
 
 %dir %{_datadir}/nvim/runtime/pack/dist/opt/cfilter
 %dir %{_datadir}/nvim/runtime/pack/dist/opt/cfilter/plugin
-%{_datadir}/nvim/runtime/pack/dist/opt/cfilter/plugin/*.lua
+%{_datadir}/nvim/runtime/pack/dist/opt/cfilter/plugin/*.vim
 
 %dir %{_datadir}/nvim/runtime/pack/dist/opt/justify
 %dir %{_datadir}/nvim/runtime/pack/dist/opt/justify/plugin
@@ -336,6 +338,9 @@ NVIM_LOG_FILE=/dev/null %{_bindir}/nvim -u NONE -es -c ":helptags %{_datadir}/nv
 
 %dir %{_datadir}/nvim/runtime/pack/dist/opt/netrw/autoload
 %{_datadir}/nvim/runtime/pack/dist/opt/netrw/autoload/*.vim
+
+%dir %{_datadir}/nvim/runtime/pack/dist/opt/netrw/autoload/netrw
+%{_datadir}/nvim/runtime/pack/dist/opt/netrw/autoload/netrw/*.vim
 
 %dir %{_datadir}/nvim/runtime/pack/dist/opt/netrw/doc
 %{_datadir}/nvim/runtime/pack/dist/opt/netrw/doc/*.txt
@@ -352,9 +357,23 @@ NVIM_LOG_FILE=/dev/null %{_bindir}/nvim -u NONE -es -c ":helptags %{_datadir}/nv
 %dir %{_datadir}/nvim/runtime/pack/dist/opt/nohlsearch/plugin
 %{_datadir}/nvim/runtime/pack/dist/opt/nohlsearch/plugin/*.vim
 
-%dir %{_datadir}/nvim/runtime/pack/dist/opt/shellmenu
-%dir %{_datadir}/nvim/runtime/pack/dist/opt/shellmenu/plugin
-%{_datadir}/nvim/runtime/pack/dist/opt/shellmenu/plugin/*.vim
+%dir %{_datadir}/nvim/runtime/pack/dist/opt/nvim.difftool
+%dir %{_datadir}/nvim/runtime/pack/dist/opt/nvim.difftool/lua
+%{_datadir}/nvim/runtime/pack/dist/opt/nvim.difftool/lua/*.lua
+%dir %{_datadir}/nvim/runtime/pack/dist/opt/nvim.difftool/plugin
+%{_datadir}/nvim/runtime/pack/dist/opt/nvim.difftool/plugin/*.lua
+
+%dir %{_datadir}/nvim/runtime/pack/dist/opt/nvim.tohtml
+%dir %{_datadir}/nvim/runtime/pack/dist/opt/nvim.tohtml/lua
+%{_datadir}/nvim/runtime/pack/dist/opt/nvim.tohtml/lua/*.lua
+%dir %{_datadir}/nvim/runtime/pack/dist/opt/nvim.tohtml/plugin
+%{_datadir}/nvim/runtime/pack/dist/opt/nvim.tohtml/plugin/*.lua
+
+%dir %{_datadir}/nvim/runtime/pack/dist/opt/nvim.undotree
+%dir %{_datadir}/nvim/runtime/pack/dist/opt/nvim.undotree/lua
+%{_datadir}/nvim/runtime/pack/dist/opt/nvim.undotree/lua/*.lua
+%dir %{_datadir}/nvim/runtime/pack/dist/opt/nvim.undotree/plugin
+%{_datadir}/nvim/runtime/pack/dist/opt/nvim.undotree/plugin/*.lua
 
 %dir %{_datadir}/nvim/runtime/pack/dist/opt/matchit
 %dir %{_datadir}/nvim/runtime/pack/dist/opt/matchit/autoload
@@ -446,6 +465,13 @@ NVIM_LOG_FILE=/dev/null %{_bindir}/nvim -u NONE -es -c ":helptags %{_datadir}/nv
 
 %changelog
 ## START: Generated by rpmautospec
+* Tue Jul 01 2026 Mark Ziesemer <mark@ziesemer.com> - 0.12.3-1
+- Update to version 0.12.3
+- https://github.com/neovim/neovim/releases/tag/v0.12.3
+
+* Thu May 14 2026 Andreas Schneider <asn@redhat.com> - 0.12.2-1
+- Update to version 0.12.2
+
 * Mon Nov 03 2025 Andreas Schneider <asn@redhat.com> - 0.11.5-1
 - Update to version 0.11.5
 

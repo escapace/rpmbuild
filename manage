@@ -52,19 +52,9 @@ MOCK_CONFIGURATIONS = {
     "linux/arm64/v8": "centos-stream+epel-10-aarch64",
 }
 PACKAGE_INSTALL_REQUIREMENTS = {
-    "spice": (
-        "RPMS/libcacard-2.8.1-8.el10.{arch}.rpm",
-        "RPMS/libcacard-devel-2.8.1-8.el10.{arch}.rpm",
-    ),
-    "knot-resolver": (
-        "RPMS/jemalloc-5.3.0-6.el10.{arch}.rpm",
-        "RPMS/jemalloc-devel-5.3.0-6.el10.{arch}.rpm",
-    ),
     "qemu": (
         "RPMS/libiscsi-devel-1.20.0-3.el10.{arch}.rpm",
         "RPMS/libiscsi-1.20.0-3.el10.{arch}.rpm",
-        "RPMS/libcacard-2.8.1-8.el10.{arch}.rpm",
-        "RPMS/libcacard-devel-2.8.1-8.el10.{arch}.rpm",
         "RPMS/spice-server-0.15.1-4.el10.{arch}.rpm",
         "RPMS/spice-server-devel-0.15.1-4.el10.{arch}.rpm",
         "RPMS/virglrenderer-1.0.1-2.el10.{arch}.rpm",

@@ -10,7 +10,8 @@ The top-level `manage` command is a Python 3 script with no runtime Python depen
 ## Container image
 
 ```sh
-# Optional, for cross-architecture builds.
+# Optional, for cross-architecture builds, one of:
+# sudo dnf install qemu-user-static-aarch64
 # docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
 
 docker buildx create --driver docker-container --use
