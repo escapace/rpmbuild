@@ -2999,7 +2999,7 @@ popd
 %{_datadir}/systemtap/tapset/qemu-system-microblazeel-simpletrace.stp
 %{_mandir}/man1/qemu-system-microblaze.1*
 %{_mandir}/man1/qemu-system-microblazeel.1*
-%{_datadir}/%{name}/petalogix*.dtb
+
 
 
 %files system-mips
@@ -3047,12 +3047,9 @@ popd
 %{_datadir}/systemtap/tapset/qemu-system-ppc64-simpletrace.stp
 %{_mandir}/man1/qemu-system-ppc.1*
 %{_mandir}/man1/qemu-system-ppc64.1*
-%{_datadir}/%{name}/bamboo.dtb
-%{_datadir}/%{name}/canyonlands.dtb
 %{_datadir}/%{name}/qemu_vga.ndrv
 %{_datadir}/%{name}/skiboot.lid
 %{_datadir}/%{name}/u-boot.e500
-%{_datadir}/%{name}/u-boot-sam460-20100605.bin
 %{_datadir}/%{name}/vof*.bin
 %if %{have_memlock_limits}
 %{_sysconfdir}/security/limits.d/95-kvm-memlock.conf
@@ -3135,8 +3132,6 @@ popd
 %files system-x86-core
 %{_bindir}/qemu-system-i386
 %{_bindir}/qemu-system-x86_64
-%{_libdir}/%{name}/accel-tcg-i386.so
-%{_libdir}/%{name}/accel-tcg-x86_64.so
 %{_datadir}/systemtap/tapset/qemu-system-i386.stp
 %{_datadir}/systemtap/tapset/qemu-system-i386-log.stp
 %{_datadir}/systemtap/tapset/qemu-system-i386-simpletrace.stp
