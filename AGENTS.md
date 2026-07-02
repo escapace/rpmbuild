@@ -61,9 +61,9 @@ When building a new local dependency (e.g. `spice-protocol`), you must explicitl
 
 Crucially, if the new dependency is exposed downstream via `pkg-config` (e.g. `spice-server.pc` contains `Requires: spice-protocol`), you must **also** add it to the `PACKAGE_INSTALL_REQUIREMENTS` of any downstream package that builds against it (e.g. `qemu`). `mock` runs isolated rebuilds and will fail to resolve transitive dependencies if they are only available locally.
 
-## Large upstream source tarballs
+## Large source artifacts and generated SRPMs
 
-Do not commit upstream source tarballs that exceed GitHub's 100MB file size limit (e.g. QEMU). Instead, exclude them from the repo and download them dynamically in the GitHub Actions workflow (`.github/workflows/build.yaml`) using a secure `curl` step prior to running the `./manage build` command.
+Do not commit upstream source tarballs or generated SRPMs that exceed GitHub's 100MB file size limit (e.g. QEMU). Instead, exclude them from the repo and download upstream tarballs dynamically in the GitHub Actions workflow (`.github/workflows/build.yaml`) using a secure `curl` step prior to running the `./manage build` command. After extracting `packages-*.zip` workflow artifacts, check non-gitignored files for this limit before committing.
 
 ## Porting Fedora specs to CentOS 10
 
