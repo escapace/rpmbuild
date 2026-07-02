@@ -64,3 +64,9 @@ Crucially, if the new dependency is exposed downstream via `pkg-config` (e.g. `s
 ## Large upstream source tarballs
 
 Do not commit upstream source tarballs that exceed GitHub's 100MB file size limit (e.g. QEMU). Instead, exclude them from the repo and download them dynamically in the GitHub Actions workflow (`.github/workflows/build.yaml`) using a secure `curl` step prior to running the `./manage build` command.
+
+## Porting Fedora specs to CentOS 10
+
+When adopting a `.spec` file from Fedora to CentOS Stream 10:
+1. Ensure the `Release` tag strictly uses `1%{?dist}` so it natively resolves to `.el10` in the buildroot.
+2. Review all `%if 0%{?fedora}` conditional blocks. Important dependencies or features enabled only for modern Fedora versions will be silently dropped on CentOS unless the condition is explicitly expanded to include `|| 0%{?rhel} >= 10`.

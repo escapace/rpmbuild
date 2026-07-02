@@ -24,6 +24,7 @@ RUN dnf clean all && \
 
 RUN adduser -u 1000 -G mock -U -m centos && \
   echo 'centos ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers && \
+  echo -e "auth sufficient pam_permit.so\naccount sufficient pam_permit.so\nsession sufficient pam_permit.so\npassword sufficient pam_permit.so" > /etc/pam.d/sudo && \
   mkdir -p /home/centos/cache /home/centos/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS} && \
   echo '%_topdir %(echo $HOME)/rpmbuild' > /home/centos/.rpmmacros && \
   echo "config_opts['isolation'] = 'simple'" >> /etc/mock/site-defaults.cfg && \
