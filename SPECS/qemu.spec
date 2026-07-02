@@ -2388,6 +2388,7 @@ popd
 %files common -f %{name}.lang
 %license COPYING COPYING.LIB LICENSE
 %dir %{_datadir}/%{name}/
+%dir %{_datadir}/%{name}/dtb/
 %dir %{_datadir}/%{name}/vhost-user/
 %{_datadir}/icons/*
 %{_datadir}/%{name}/keymaps/
@@ -2942,7 +2943,9 @@ popd
 %files system-arm
 %files system-arm-core
 %{_bindir}/qemu-system-arm
+%{_datadir}/%{name}/ast27x0_bootrom.bin
 %{_datadir}/%{name}/npcm7xx_bootrom.bin
+%{_datadir}/%{name}/npcm8xx_bootrom.bin
 %{_datadir}/systemtap/tapset/qemu-system-arm.stp
 %{_datadir}/systemtap/tapset/qemu-system-arm-log.stp
 %{_datadir}/systemtap/tapset/qemu-system-arm-simpletrace.stp
@@ -2999,6 +3002,7 @@ popd
 %{_datadir}/systemtap/tapset/qemu-system-microblazeel-simpletrace.stp
 %{_mandir}/man1/qemu-system-microblaze.1*
 %{_mandir}/man1/qemu-system-microblazeel.1*
+%{_datadir}/%{name}/dtb/petalogix*.dtb
 
 
 
@@ -3048,8 +3052,14 @@ popd
 %{_mandir}/man1/qemu-system-ppc.1*
 %{_mandir}/man1/qemu-system-ppc64.1*
 %{_datadir}/%{name}/qemu_vga.ndrv
+%{_datadir}/%{name}/dtb/bamboo.dtb
+%{_datadir}/%{name}/dtb/canyonlands.dtb
+%{_datadir}/%{name}/dtb/pegasos1.dtb
+%{_datadir}/%{name}/dtb/pegasos2.dtb
+%{_datadir}/%{name}/pnv-pnor.bin
 %{_datadir}/%{name}/skiboot.lid
 %{_datadir}/%{name}/u-boot.e500
+%{_datadir}/%{name}/u-boot-sam460.bin
 %{_datadir}/%{name}/vof*.bin
 %if %{have_memlock_limits}
 %{_sysconfdir}/security/limits.d/95-kvm-memlock.conf
