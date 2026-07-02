@@ -11,6 +11,7 @@ on:
           - qemu
           - neovim
           - knot-resolver
+          - tmux
       architecture:
         description: 'Target architecture'
         required: true
@@ -49,6 +50,13 @@ jobs:
           RPMBUILD_IMAGE: local/rpmbuild
         run: |
           ./manage build knot-resolver
+
+      - name: build tmux
+        if: ${{ inputs.target == 'tmux' }}
+        env:
+          RPMBUILD_IMAGE: local/rpmbuild
+        run: |
+          ./manage build tmux
 
       - name: download qemu source
         if: ${{ inputs.target == 'qemu' }}
