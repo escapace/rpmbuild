@@ -1,5 +1,5 @@
 Name:           tmux
-Version:        3.7b
+Version:        3.8
 Release:        1%{?dist}
 Summary:        A terminal multiplexer
 
@@ -77,6 +77,9 @@ fi
 %{_unitdir}/tmux@.service
 
 %changelog
+* Thu Oct 29 2026 yyxi <178086254+yyxi@users.noreply.github.com> - 3.8-1
+- Update to 3.8
+
 * Thu Jul 02 2026 Nicholas Marriott <nicholas.marriott@gmail.com> - 3.7b-1
 - Update to 3.7b
 - Fix redraw after the end of a synchronized update
