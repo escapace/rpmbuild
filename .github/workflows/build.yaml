@@ -76,7 +76,7 @@ jobs:
       - name: download qemu source
         if: ${{ inputs.target == 'qemu' }}
         run: |
-          curl --proto '=https' --tlsv1.2 -fL -o SOURCES/qemu/qemu-10.2.2.tar.xz https://download.qemu.org/qemu-10.2.2.tar.xz
+          curl --proto '=https' --tlsv1.2 -fL -o SOURCES/qemu/qemu-11.1.3.tar.xz https://download.qemu.org/qemu-11.1.3.tar.xz
 
       - name: build qemu and dependencies
         if: ${{ inputs.target == 'qemu' }}
