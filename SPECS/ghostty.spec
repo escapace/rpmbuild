@@ -82,6 +82,10 @@ mv zig-%{_arch}-linux-%{zig_version} zig
 
 %install
 export ZIG_GLOBAL_CACHE_DIR="$PWD/zig-global-cache"
+# Themes come from iTerm2-Color-Schemes and are not covered by the License
+# tag; refer to the licenses of the individual themes upstream:
+# https://github.com/mbadolato/iTerm2-Color-Schemes
+# https://github.com/mbadolato/iTerm2-Color-Schemes/issues/638
 # EL10's harfbuzz 8.4 is too old; under --system the other font/image
 # libraries must be bundled too or harfbuzz's cimport still fails.
 # gtk4-layer-shell is not packaged for EL10.
@@ -97,6 +101,7 @@ DESTDIR=%{buildroot} ./zig/zig build \
     -Dstrip=false \
     -Dversion-string=%{version} \
     -Demit-docs \
+    -Demit-themes=true \
     -fno-sys=harfbuzz \
     -fno-sys=freetype \
     -fno-sys=fontconfig \
