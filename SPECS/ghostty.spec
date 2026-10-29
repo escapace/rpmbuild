@@ -28,6 +28,8 @@ Source1:        https://release.files.ghostty.org/%{version}/ghostty-%{version}.
 # Zig package cache for --system builds: fetch-zig-cache.sh with
 # ZIG_GLOBAL_CACHE_DIR=ghostty-%%{version}-vendor, tmp/ removed
 Source2:        ghostty-%{version}-vendor.tar.xz
+# Upstream zig instead of EPEL's: EPEL zig is x86_64-only and its version
+# floats (0.16 breaks ghostty 1.3.x)
 Source3:        https://ziglang.org/download/%{zig_version}/zig-x86_64-linux-%{zig_version}.tar.xz
 Source4:        https://ziglang.org/download/%{zig_version}/zig-x86_64-linux-%{zig_version}.tar.xz.minisig
 Source5:        https://ziglang.org/download/%{zig_version}/zig-aarch64-linux-%{zig_version}.tar.xz
