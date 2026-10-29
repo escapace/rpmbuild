@@ -65,15 +65,24 @@ Crucially, if the new dependency is exposed downstream via `pkg-config` (e.g. `s
 
 Do not commit upstream source tarballs or generated SRPMs that exceed GitHub's 100MB file size limit (e.g. QEMU). Instead, exclude them from the repo and download upstream tarballs dynamically in the GitHub Actions workflow (`.github/workflows/build.yaml`) using a secure `curl` step prior to running the `./manage build` command. After extracting `packages-*.zip` workflow artifacts, check non-gitignored files for this limit before committing.
 
+Generated vendor tarballs have no upstream URL, so they cannot be downloaded in the workflow and must be committed. Check the *compressed* size: the ghostty zig cache is 125MB as `.tar.gz` but 64MB as `.tar.xz`.
+
 ## Porting Fedora specs to CentOS 10
 
 When adopting a `.spec` file from Fedora to CentOS Stream 10:
 1. Ensure the `Release` tag strictly uses `1%{?dist}` so it natively resolves to `.el10` in the buildroot.
 2. Review all `%if 0%{?fedora}` conditional blocks. Important dependencies or features enabled only for modern Fedora versions will be silently dropped on CentOS unless the condition is explicitly expanded to include `|| 0%{?rhel} >= 10`.
+3. `%{evr}` is not defined by EL10's rpm. It expands literally, so `Requires: foo = %{evr}` produces an uninstallable package. Use `%{version}-%{release}`.
+
+## Missing build-ids in bundled binaries
+
+Toolchains that ignore RPM's `LDFLAGS` (e.g. zig) can produce libraries without a GNU build-id, and `find-debuginfo --strict-build-id` then fails `%install`. EL10's macros test whether `_missing_build_ids_terminate_build` is *defined*, not its value: `%global _missing_build_ids_terminate_build 0` has no effect. Use `%undefine _missing_build_ids_terminate_build`.
 
 ## GPG signature synchronization
 
 When updating an upstream source tarball to a new release (e.g. modifying `Version` in a `.spec`), you **must** also download the matching `.sig` or `.asc` signature file for that specific release. Reusing an old signature file, even if renamed, will cause `rpmbuild` to fail instantly in `%prep` with a `BAD signature` error. Since signature files are tiny, commit them directly to the repository alongside the `.spec`.
+
+Some upstreams (ghostty, zig) publish only minisign `.minisig` files, not GPG signatures. The same rule applies: commit the release-matching `.minisig` and verify it in `%prep` with `minisign -V … -P <pubkey>` (`BuildRequires: minisign`, from EPEL).
 
 ## Strict RPM %changelog date formatting
 
@@ -86,3 +95,13 @@ When adopting an older `.spec` for a major new software release, the upstream pr
 1. Download the new upstream `.spec` file.
 2. Use `comm -13` and `comm -23` to mathematically diff the extracted `%files` block paths between your local spec and the upstream spec.
 3. Preemptively add or remove these exact paths from your local `%files` sections to align perfectly with upstream.
+
+## Iterating on a failing build
+
+Do not iterate with `./manage build <pkg>`: it wipes its work directory on every run, so a failure discards the build tree and the mock chroot. Keep one long-running container from the repo's own rpmbuild image (same mounts as `./manage`) and run the mock steps from `container-build` by hand with `--no-clean --no-cleanup-after`, so the chroot, `BUILD/` tree and logs survive for inspection. Use `./manage build` only for the final confirmation. Do not create other ad-hoc build environments.
+
+`rpmbuild -bb --short-circuit` jumps straight to packaging (it skips `%install` and `%doc`), so it cannot test `%install` fixes. Re-run the full mock rebuild instead.
+
+## ghostty-terminfo is versioned independently
+
+`ghostty-terminfo` stays a separate package and tracks the **newest** upstream ghostty release, even when `ghostty` itself is held back. It describes the client terminal, often a newer Ghostty connecting over ssh. The `ghostty` package must not ship terminfo files; it `Requires: ghostty-terminfo`.

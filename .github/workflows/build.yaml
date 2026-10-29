@@ -12,6 +12,7 @@ on:
           - neovim
           - knot-resolver
           - tmux
+          - ghostty
       architecture:
         description: 'Target architecture'
         required: true
@@ -57,6 +58,20 @@ jobs:
           RPMBUILD_IMAGE: local/rpmbuild
         run: |
           ./manage build tmux
+
+      - name: download ghostty sources
+        if: ${{ inputs.target == 'ghostty' }}
+        run: |
+          curl --proto '=https' --tlsv1.2 -fL -o SOURCES/ghostty/ghostty-1.3.1.tar.gz https://release.files.ghostty.org/1.3.1/ghostty-1.3.1.tar.gz
+          curl --proto '=https' --tlsv1.2 -fL -o SOURCES/ghostty/zig-x86_64-linux-0.15.2.tar.xz https://ziglang.org/download/0.15.2/zig-x86_64-linux-0.15.2.tar.xz
+          curl --proto '=https' --tlsv1.2 -fL -o SOURCES/ghostty/zig-aarch64-linux-0.15.2.tar.xz https://ziglang.org/download/0.15.2/zig-aarch64-linux-0.15.2.tar.xz
+
+      - name: build ghostty
+        if: ${{ inputs.target == 'ghostty' }}
+        env:
+          RPMBUILD_IMAGE: local/rpmbuild
+        run: |
+          ./manage build ghostty-terminfo ghostty
 
       - name: download qemu source
         if: ${{ inputs.target == 'qemu' }}

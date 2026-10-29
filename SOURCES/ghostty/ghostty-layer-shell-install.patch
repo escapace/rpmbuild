@@ -1,0 +1,13 @@
+--- a/src/build/SharedDeps.zig
++++ b/src/build/SharedDeps.zig
+@@ -674,7 +674,9 @@
+                 // gtk4-layer-shell *must* be dynamically linked,
+                 // so we don't add it as a static library
+                 const shared_lib = gtk4_layer_shell.artifact("gtk4-layer-shell");
+-                b.installArtifact(shared_lib);
++                // Test executables are always Debug; installing their copy
++                // races with (and can replace) the release build.
++                if (step.kind != .@"test") b.installArtifact(shared_lib);
+                 step.linkLibrary(shared_lib);
+             }
+         }
